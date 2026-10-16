@@ -1,0 +1,402 @@
+import { colors } from "./theme";
+import { capColors, shirtColors, shirtSizes } from "./designs";
+import { CampusEvent, Conversation, Listing, Offer, Order, ProductKind } from "./types";
+
+export const categories = [
+  "All items",
+  "Textbooks",
+  "Furniture",
+  "Tech",
+  "Fashion",
+  "Stationery",
+  "Sports",
+  "Accessories",
+  "Event merch",
+];
+
+export const categoryIcons: Record<string, string> = {
+  "All items": "grid-outline",
+  Textbooks: "book-outline",
+  Furniture: "bed-outline",
+  Tech: "laptop-outline",
+  Fashion: "mci:tshirt-crew-outline",
+  Stationery: "pencil-outline",
+  Sports: "basketball-outline",
+  Accessories: "watch-outline",
+  "Event merch": "ticket-outline",
+};
+
+export const categoryTints: string[] = [
+  colors.pink,
+  colors.teal,
+  colors.yellow,
+  colors.blue,
+];
+
+/** Product photo from Unsplash. If one cannot load, the app shows a colored icon tile instead. */
+const photo = (id: string) => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=800&q=70`;
+
+const base = (
+  id: string,
+  title: string,
+  price: number,
+  category: string,
+  seller: string,
+  campus: string,
+  extra: Partial<Listing> = {},
+): Listing => ({
+  id,
+  title,
+  price,
+  category,
+  seller,
+  campus,
+  condition: "Good condition",
+  description: "Listed by a student on campus.",
+  ...extra,
+});
+
+export const seedEvents: CampusEvent[] = [
+  {
+    id: "e1",
+    title: "Freshers Welcome Night",
+    date: "8 Nov 2026",
+    month: "NOV",
+    day: "08",
+    venue: "Main Auditorium",
+    color: colors.yellow,
+    organizer: "Student Union",
+    cover: "freshers",
+    description: "Meet your batch, music, games and food. The biggest night of the first semester.",
+  },
+  {
+    id: "e2",
+    title: "Inter-Faculty Sports Meet",
+    date: "22 Nov 2026",
+    month: "NOV",
+    day: "22",
+    venue: "University Ground",
+    color: colors.teal,
+    organizer: "Sports Council",
+    cover: "sports",
+    description: "Every faculty, one ground. Cricket, netball, relay and tug-of-war all day.",
+  },
+  {
+    id: "e3",
+    title: "Annual Charity Concert",
+    date: "5 Dec 2026",
+    month: "DEC",
+    day: "05",
+    venue: "Open Air Theatre",
+    color: colors.pink,
+    organizer: "Rotaract Club",
+    cover: "charity",
+    description: "An evening of live music where every ticket supports a campus scholarship fund.",
+  },
+];
+
+const eventProducts = (
+  eventId: string,
+  name: string,
+  organizer: string,
+  prices: { ticket: number; cap: number; shirt: number; bookmark: number },
+): Listing[] => {
+  const ev = (kind: ProductKind, label: string, price: number, extra: Partial<Listing>) =>
+    base(`${eventId}-${kind}`, `${name} ${label}`, price, "Event merch", organizer, "Event organizers", {
+      eventId,
+      kind,
+      sold: 0,
+      ...extra,
+    });
+  return [
+    ev("ticket", "ticket", prices.ticket, {
+      icon: "ticket-outline",
+      image: photo("photo-1540575467063-178a50c2df87"),
+      condition: "Entry ticket",
+      description: `Entry ticket for ${name}. Show the QR code at the gate.`,
+      stock: 300,
+      sold: 112,
+    }),
+    ev("cap", "cap", prices.cap, {
+      icon: "mci:hat-fedora",
+      image: photo("photo-1588850561407-ed78c282e89b"),
+      condition: "New",
+      description: `Official cap for ${name}. Adjustable strap.`,
+      colors: capColors,
+      stock: 80,
+      sold: 21,
+    }),
+    ev("tshirt", "t-shirt", prices.shirt, {
+      icon: "mci:tshirt-crew-outline",
+      image: photo("photo-1521572163474-6864f9cf17ab"),
+      condition: "New",
+      description: `Official t-shirt for ${name}. Pick a colour and size.`,
+      colors: shirtColors,
+      sizes: shirtSizes,
+      stock: 150,
+      sold: 48,
+    }),
+    ev("bookmark", "bookmark", prices.bookmark, {
+      icon: "bookmark-outline",
+      condition: "New",
+      description: `Collectible bookmark for ${name}. Choose your favourite design.`,
+      designs: ["peace", "cheeky", "joy", "cheer", "squad", "sunset", "waves", "dots", "stars"],
+      stock: 400,
+      sold: 133,
+    }),
+  ];
+};
+
+export const seedListings: Listing[] = [
+  {
+    id: "1",
+    title: "Calculus: Early Transcendentals",
+    price: 35,
+    category: "Textbooks",
+    seller: "Maya R.",
+    campus: "North Campus",
+    condition: "Like new",
+    image: "https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=800",
+    description: "Barely used and ready for your next math class.",
+    popular: true,
+    discountPercent: 20,
+  },
+  {
+    id: "2",
+    title: "Walnut study desk",
+    price: 80,
+    category: "Furniture",
+    seller: "Jordan K.",
+    campus: "West Village",
+    condition: "Good condition",
+    image: "https://images.unsplash.com/photo-1518455027359-f3f8164ba6bd?w=800",
+    description: "Solid walnut desk with room for a monitor and books.",
+    popular: true,
+  },
+  {
+    id: "3",
+    title: "Noise-cancelling headphones",
+    price: 120,
+    category: "Tech",
+    seller: "Alex P.",
+    campus: "East Quad",
+    condition: "Like new",
+    image: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800",
+    description: "Wireless headphones with case and charging cable.",
+    popular: true,
+    discountPercent: 15,
+  },
+  {
+    id: "4",
+    title: "Vintage varsity jacket",
+    price: 45,
+    category: "Fashion",
+    seller: "Sam T.",
+    campus: "North Campus",
+    condition: "Good condition",
+    image: "https://images.unsplash.com/photo-1551488831-00ddcb6c6bd3?w=800",
+    description: "A warm, classic layer with a relaxed fit.",
+    popular: true,
+    discountPercent: 10,
+  },
+  base("5", "Scientific calculator", 18, "Tech", "Nimal P.", "North Campus", {
+    image: photo("photo-1587145820266-a5951ee6f620"),
+    icon: "calculator-outline",
+    discountPercent: 25,
+    popular: true,
+  }),
+  base("6", "Data structures notes bundle", 9, "Textbooks", "Dilini S.", "East Quad", {
+    image: photo("photo-1517842645767-c639042777db"),
+    icon: "document-text-outline",
+    discountPercent: 30,
+  }),
+  base("7", "Desk lamp", 14, "Furniture", "Kavindu W.", "West Village", {
+    image: photo("photo-1507473885765-e6ed057f782c"),
+    icon: "bulb-outline",
+    discountPercent: 20,
+  }),
+  base("8", "A4 notebook set (5 pack)", 7, "Stationery", "Ishara M.", "North Campus", {
+    image: photo("photo-1531346878377-a5be20888e57"),
+    icon: "pencil-outline",
+    discountPercent: 15,
+    popular: true,
+  }),
+  base("9", "Badminton racket", 22, "Sports", "Tharindu J.", "University Ground", {
+    image: photo("photo-1626224583764-f87db24ac4ea"),
+    icon: "tennisball-outline",
+    discountPercent: 35,
+  }),
+  base("10", "Canvas backpack", 26, "Accessories", "Sachini L.", "East Quad", {
+    image: photo("photo-1553062407-98eeb64c6a62"),
+    icon: "bag-handle-outline",
+    popular: true,
+  }),
+  base("11", "Wireless mouse", 11, "Tech", "Pasindu H.", "North Campus", {
+    image: photo("photo-1527864550417-7fd91fc51a46"),
+    icon: "hardware-chip-outline",
+    discountPercent: 20,
+  }),
+  base("12", "Organic chemistry textbook", 30, "Textbooks", "Amaya F.", "West Village", {
+    image: photo("photo-1532012197267-da84d127e765"),
+    icon: "book-outline",
+  }),
+  base("13", "Casual hoodie", 20, "Fashion", "Ruwan D.", "East Quad", {
+    image: photo("photo-1556821840-3a63f95609a7"),
+    icon: "mci:tshirt-crew-outline",
+    popular: true,
+  }),
+  base("14", "Analog wristwatch", 24, "Accessories", "Hiruni N.", "North Campus", {
+    image: photo("photo-1524592094714-0f0654e20314"),
+    icon: "watch-outline",
+  }),
+  ...eventProducts("e1", "Freshers Night", "Student Union", { ticket: 5, cap: 6, shirt: 10, bookmark: 2 }),
+  ...eventProducts("e2", "Sports Meet", "Sports Council", { ticket: 3, cap: 6, shirt: 11, bookmark: 2 }),
+  ...eventProducts("e3", "Charity Concert", "Rotaract Club", { ticket: 8, cap: 7, shirt: 12, bookmark: 3 }),
+];
+
+export const seedOffers: Offer[] = [
+  {
+    id: "o1",
+    eventId: "e1",
+    kind: "bogo",
+    target: "ticket",
+    title: "Buy 1 ticket, get 1 free",
+    detail: "Bring a friend to Freshers Night. Every second ticket is on us.",
+    until: "Until 6 Nov",
+  },
+  {
+    id: "o2",
+    eventId: "e2",
+    kind: "percent",
+    target: "tshirt",
+    percent: 20,
+    title: "CPL t-shirt: 20% off",
+    detail: "Official CPL edition tees are 20% off for the Sports Meet.",
+    until: "Until 20 Nov",
+  },
+  {
+    id: "o3",
+    eventId: "e3",
+    kind: "bundle",
+    target: "ticket",
+    gives: "bookmark",
+    title: "Free bookmark with every ticket",
+    detail: "Buy a concert ticket and pick any bookmark design for free.",
+    until: "While stocks last",
+  },
+  {
+    id: "o4",
+    eventId: "e1",
+    kind: "info",
+    title: "Gates open at 5:00 PM",
+    detail: "Bring your student ID. Tickets are checked at the main gate.",
+  },
+];
+
+/** Demo orders so the profile tabs are not empty in demo mode. */
+export const seedOrders: Order[] = [
+  {
+    id: "ORD-1042",
+    date: "12 Oct 2026",
+    status: "Ready for pickup",
+    party: "Maya R.",
+    lines: [{ title: "Calculus: Early Transcendentals", qty: 1, unitPrice: 28, itemId: "1" }],
+    total: 28,
+  },
+  {
+    id: "ORD-1031",
+    date: "3 Oct 2026",
+    status: "Placed",
+    party: "Student Union",
+    eventId: "e1",
+    lines: [{ title: "Freshers Night ticket", qty: 2, unitPrice: 5, itemId: "e1-ticket" }],
+    total: 5,
+  },
+  {
+    id: "ORD-0988",
+    date: "21 Sep 2026",
+    status: "Completed",
+    party: "Alex P.",
+    lines: [{ title: "Noise-cancelling headphones", qty: 1, unitPrice: 102, itemId: "3" }],
+    total: 102,
+  },
+  {
+    id: "ORD-0954",
+    date: "9 Sep 2026",
+    status: "Completed",
+    party: "Hiruni N.",
+    lines: [{ title: "Analog wristwatch", qty: 1, unitPrice: 24, itemId: "14" }],
+    total: 24,
+  },
+];
+
+/** Demo orders that arrived for the seller / organizer. */
+export const seedSellerOrders: Order[] = [
+  {
+    id: "S-2201",
+    date: "15 Oct 2026",
+    status: "Placed",
+    party: "Nethmi K.",
+    eventId: "e2",
+    lines: [
+      { title: "Sports Meet t-shirt", qty: 1, unitPrice: 8.8, variant: "Teal · M · Waves" },
+      { title: "Sports Meet ticket", qty: 2, unitPrice: 3 },
+    ],
+    total: 14.8,
+  },
+  {
+    id: "S-2198",
+    date: "14 Oct 2026",
+    status: "Ready for pickup",
+    party: "Chamod S.",
+    lines: [{ title: "Desk lamp", qty: 1, unitPrice: 14 }],
+    total: 14,
+  },
+  {
+    id: "S-2190",
+    date: "11 Oct 2026",
+    status: "Completed",
+    party: "Anika D.",
+    eventId: "e1",
+    lines: [{ title: "Freshers Night bookmark", qty: 3, unitPrice: 2, variant: "Sunset" }],
+    total: 6,
+  },
+];
+
+/** Demo buyer/seller chat conversations */
+export const seedConversations: Conversation[] = [
+  {
+    id: "c-seed-1",
+    itemId: "1",
+    itemTitle: "Calculus: Early Transcendentals",
+    seller: "Maya R.",
+    sellerId: "demo-seller",
+    buyer: "Alex P.",
+    buyerId: "buyer-alex",
+    memberIds: ["demo-seller", "buyer-alex"],
+    lastMessage: "Can we meet at the library?",
+    lastMessageAt: Date.now() - 3600000,
+    messages: [
+      { id: "m1", text: "Hi, is the calculus textbook still available?", mine: false, senderId: "buyer-alex", senderRole: "buyer", at: Date.now() - 7200000 },
+      { id: "m2", text: "Yes, it is! Clean pages, no highlights.", mine: true, senderId: "demo-seller", senderRole: "seller", at: Date.now() - 5400000 },
+      { id: "m3", text: "Can we meet at the library?", mine: false, senderId: "buyer-alex", senderRole: "buyer", at: Date.now() - 3600000 },
+    ],
+  },
+  {
+    id: "c-seed-2",
+    itemId: "3",
+    itemTitle: "Noise-cancelling headphones",
+    seller: "Alex P.",
+    sellerId: "demo-seller",
+    buyer: "Nethmi K.",
+    buyerId: "buyer-nethmi",
+    memberIds: ["demo-seller", "buyer-nethmi"],
+    lastMessage: "Price is fixed, thanks!",
+    lastMessageAt: Date.now() - 86400000,
+    messages: [
+      { id: "m4", text: "Would you take $90 for the headphones?", mine: false, senderId: "buyer-nethmi", senderRole: "buyer", at: Date.now() - 90000000 },
+      { id: "m5", text: "Price is fixed, thanks!", mine: true, senderId: "demo-seller", senderRole: "seller", at: Date.now() - 86400000 },
+    ],
+  },
+];
+
