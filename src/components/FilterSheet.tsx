@@ -1,4 +1,4 @@
-// FilterSheet - initial price range inputs
+// FilterSheet - added condition pills
 import { useEffect, useMemo, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { categories } from "../data";
