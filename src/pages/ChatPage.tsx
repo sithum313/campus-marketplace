@@ -1,4 +1,4 @@
-// ChatPage - message bubble feed
+// ChatPage - firestore realtime sending
 import { useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { AppIcon } from "../components/AppIcon";
