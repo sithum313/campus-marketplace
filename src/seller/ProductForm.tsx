@@ -50,7 +50,7 @@ export function ProductForm({
   const [condition, setCondition] = useState(initial?.condition || "New");
   const [listPrice, setListPrice] = useState(initial ? String(listPriceOf(initial)) : "");
   const [discount, setDiscount] = useState(initial?.discountPercent ? String(initial.discountPercent) : "");
-  const [stock, setStock] = useState(initial?.stock !== undefined ? String(initial.stock) : "");
+  const [stock, setStock] = useState(initial?.stock !== undefined ? String(initial.stock) : "1");
   const [place, setPlace] = useState(initial?.campus || campusDefault);
   const [image, setImage] = useState(initial?.image || "");
   const [hasColors, setHasColors] = useState(!!initial?.colors?.length || kindProp === "tshirt" || kindProp === "cap");
@@ -63,6 +63,8 @@ export function ProductForm({
     kindProp === "bookmark" || initial?.kind === "bookmark" ? initial?.designs || ["peace", "joy", "sunset", "waves"] : [],
   );
 
+  const [submitting, setSubmitting] = useState(false);
+
   const toggle = (list: string[], set: (v: string[]) => void, id: string) =>
     set(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
 
@@ -73,8 +75,10 @@ export function ProductForm({
   const valid = title.trim().length > 1 && Number.isFinite(base) && base > 0 && (stock === "" || (Number.isInteger(num(stock)) && num(stock) >= 0)) && num(discount) <= 90 && (!wantsDesigns || designs.length > 0);
 
   const submit = () => {
-    if (!valid) return;
+    if (!valid || submitting) return;
+    setSubmitting(true);
     const swatches = hasColors ? PALETTE.filter((c) => pickedColors.includes(c.name)) : [];
+    const parsedStock = stock === "" ? 1 : Math.max(0, Math.floor(num(stock)));
     onSubmit({
       title: title.trim(),
       description: description.trim() || (event ? `${kindLabel(kind)} for ${event.title}.` : "Listed by a student on campus."),
@@ -83,9 +87,9 @@ export function ProductForm({
       price: final,
       listPrice: d > 0 ? base : undefined,
       discountPercent: d > 0 ? d : undefined,
-      stock: stock === "" ? undefined : Math.floor(num(stock)),
+      stock: parsedStock,
       sold: initial?.sold ?? 0,
-      soldOut: stock !== "" && num(stock) === 0 ? true : initial?.soldOut && num(stock) > 0 ? false : initial?.soldOut,
+      soldOut: parsedStock === 0 ? true : initial?.soldOut && parsedStock > 0 ? false : !!initial?.soldOut,
       campus: event ? "Event organizers" : place.trim() || campusDefault,
       image: image.trim() || undefined,
       icon: kindIcon(event ? kind : undefined) || initial?.icon,
@@ -171,8 +175,8 @@ export function ProductForm({
         </Text>
       ) : null}
 
-      <Label hint="Leave empty for unlimited. Set 0 to mark sold out.">Quantity in stock</Label>
-      <Field placeholder="e.g. 50" keyboardType="numeric" value={stock} onChangeText={(v) => setStock(digits(v).split(".")[0])} />
+      <Label hint="Quantity available (defaults to 1). Set 0 to mark sold out.">Quantity in stock</Label>
+      <Field placeholder="e.g. 1" keyboardType="numeric" value={stock} onChangeText={(v) => setStock(digits(v).split(".")[0])} />
 
       {!event ? (
         <>
@@ -210,7 +214,7 @@ export function ProductForm({
 
       <View style={styles.footer}>
         <Button kind="outline" label="Cancel" onPress={onCancel} style={{ flex: 1 }} />
-        <Button label={initial ? "Save changes" : "Publish"} disabled={!valid} onPress={submit} style={{ flex: 1.5 }} />
+        <Button label={initial ? "Save changes" : "Publish"} disabled={!valid || submitting} onPress={submit} style={{ flex: 1.5 }} />
       </View>
     </ScrollView>
   );
