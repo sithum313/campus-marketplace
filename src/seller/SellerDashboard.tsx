@@ -28,7 +28,9 @@ export function SellerDashboard({
   onMessages?: () => void;
 }) {
   const safeOrders = orders || [];
-  const safeProducts = products || [];
+  const safeProducts = (products || []).filter(
+    (p, idx, arr) => p?.id && arr.findIndex((x) => x?.id === p.id) === idx,
+  );
   const safeConversations = conversations || [];
   const safeOffers = offers || [];
   const safeName = (name || "Seller").trim() || "Seller";
@@ -45,7 +47,7 @@ export function SellerDashboard({
     .reduce((s, o) => s + (Number(o?.total) || 0), 0);
   const activeConversations = safeConversations.length;
   const stats = [
-    { label: "Products live", value: String(safeProducts.filter((p) => !p?.soldOut).length), icon: "cube-outline", tint: colors.teal },
+    { label: "Products live", value: String(safeProducts.filter((p) => !p?.soldOut && p?.stock !== 0).length), icon: "cube-outline", tint: colors.teal },
     { label: "New orders", value: String(newOrders), icon: "notifications-outline", tint: colors.yellow },
     { label: "Inquiries", value: String(activeConversations), icon: "mail-outline", tint: colors.pink },
     { label: "Revenue", value: money(Math.round(revenue * 100) / 100), icon: "cash-outline", tint: colors.blue },
