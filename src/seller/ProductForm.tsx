@@ -6,7 +6,6 @@ import { categories } from "../data";
 import { capColors, designLibrary, shirtColors, shirtSizes } from "../designs";
 import { colors, listPriceOf, money } from "../theme";
 import { CampusEvent, Listing, ProductKind, Swatch } from "../types";
-import React from "react";
 
 /** Everything a seller fills in; the app adds id, seller and sellerId when saving. */
 export type ProductDraft = Omit<Listing, "id" | "seller" | "sellerId">;
@@ -61,7 +60,7 @@ export function ProductForm({
   const [hasSizes, setHasSizes] = useState(!!initial?.sizes?.length || kindProp === "tshirt");
   const [pickedSizes, setPickedSizes] = useState<string[]>(initial?.sizes || (kindProp === "tshirt" ? shirtSizes : []));
   const [designs, setDesigns] = useState<string[]>(
-    initial?.designs || (kindProp === "tshirt" ? ["crew", "laugh", "sunset"] : kindProp === "bookmark" ? ["peace", "joy", "sunset", "waves"] : []),
+    kindProp === "bookmark" || initial?.kind === "bookmark" ? initial?.designs || ["peace", "joy", "sunset", "waves"] : [],
   );
 
   const toggle = (list: string[], set: (v: string[]) => void, id: string) =>
@@ -70,7 +69,7 @@ export function ProductForm({
   const d = Math.max(0, Math.min(90, num(discount)));
   const base = num(listPrice);
   const final = Math.round(base * (1 - d / 100) * 100) / 100;
-  const wantsDesigns = !!event && (kind === "tshirt" || kind === "bookmark");
+  const wantsDesigns = !!event && kind === "bookmark";
   const valid = title.trim().length > 1 && Number.isFinite(base) && base > 0 && (stock === "" || (Number.isInteger(num(stock)) && num(stock) >= 0)) && num(discount) <= 90 && (!wantsDesigns || designs.length > 0);
 
   const submit = () => {
@@ -203,7 +202,7 @@ export function ProductForm({
       {wantsDesigns ? (
         <>
           <Label hint={`${designs.length} selected · buyers pick one when ordering`}>
-            {kind === "bookmark" ? "Bookmark designs" : "T-shirt print designs"}
+            Bookmark designs
           </Label>
           <DesignGrid options={designLibrary.map((x) => x.id)} selected={designs} onToggle={(id) => toggle(designs, setDesigns, id)} columns={4} />
         </>

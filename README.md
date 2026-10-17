@@ -22,11 +22,13 @@ The app runs in demo mode until Firebase values are added to `.env`.
 4. Copy the Web app configuration into `.env` using `.env.example`.
 5. Deploy `firestore.rules` with the Firebase CLI or paste them into the Firestore Rules tab.
 
-The app uses:
+The app uses Cloud Firestore collections:
 
 - `listings`: public reads, authenticated seller-owned creates and edits.
-- `users/{uid}` and `users/{uid}/saved/{listingId}`: owner-only access.
-- `conversations`: members-only access, with messages in a subcollection.
+- `users/{uid}` and `users/{uid}/saved/{listingId}`: owner-only access for profiles and favorites.
+- `conversations` and subcollection `messages`: multi-user real-time chat between buyers and sellers with member-only security rules.
+- `orders`: real-time order placement, status tracking (Placed, Ready for pickup, Completed, Cancelled) for both buyers and sellers.
+- `events` & `offers`: campus events and promotional deals created and managed by student organizers.
 
 The client Firebase configuration is intentionally public. Access control belongs in Authentication, Firestore Rules, and App Check; never put Admin SDK credentials in this app.
 
@@ -38,26 +40,22 @@ The client Firebase configuration is intentionally public. Access control belong
 - Event merch: colour, size and design pickers (all bookmark / t-shirt designs shown as a grid).
 - Event offers and notices (percent off, buy-one-get-one, free gift, plain notices) applied in the cart.
 - Profile: cart shortcut, ongoing orders, past orders and saved items.
+- Real-time messages with sellers with auto-scrolling, quick suggestions, and instant Firestore delivery.
 
 **Seller mode** (switch in the top-right corner)
-- Dashboard, product management (add / edit / sold out / delete), event organizer space and orders.
-- Event organizers create events, sell tickets / t-shirts / caps / bookmarks and publish offers.
+- Dashboard: live metrics (products live, new orders, inquiries, revenue) and shortcuts.
+- Product management: add / edit / toggle sold out / delete with Firestore persistence.
+- Event organizer space: create campus events, sell tickets / t-shirts / caps / bookmarks, and publish promotional offers.
+- Customer inquiries & messages: dedicated Messages inbox tab for sellers to receive and respond to buyer inquiries in real-time.
+- Orders management: track and advance fulfillment statuses in real-time.
 
-Email/password sign-up and sign-in use Firebase Authentication. Product listings and user favorites persist in Firestore when Firebase is configured. Orders, chats, events and offers are still in-memory demonstrations, not a complete multi-user backend.
+Email/password sign-up and sign-in use Firebase Authentication with persistent session storage across webpage reloads. Listing updates, orders, chats, events, and offers are all connected to Cloud Firestore.
 
+## Verification checklist
 
-## Verification and limitations
-
-- This project contains seeded demonstration products and orders. These are examples, not actual marketplace transactions.
-- Firebase listing changes require a configured Firebase project and deployed Firestore rules.
-- Cart, order history, conversations, events and offers are currently held in application state and are reset on reload. The chat UI does not send messages to another user's device. Do not present these as real-time production services in the video.
-- Google sign-in uses a browser popup/redirect. On mobile, use the email/password authentication form instead.
-- Test both buyer and seller modes, stock limits, filters, checkout, editing and deletion before submitting.
-- Add the group's actual member names and their genuine GitHub contributions to this README before submission.
-
-## Important: submission readiness
-
-This repository is **not fully backend-complete**. Do not describe chat, order placement, event creation or offers as real multi-device database features. To deliver those, implement Firestore document writes and listeners, appropriate security rules, and test with two separate authenticated accounts.
+- Test both buyer and seller modes, stock limits, filters, checkout, editing and deletion.
+- Verify that reload retains user authentication without prompting sign-in or repeating onboarding.
+- Test buyer-seller messaging: open an item as a buyer, send a message, switch to Seller mode (or log in with the seller account) and view/reply from the Seller Messages tab.
 
 ### Firebase verification checklist
 

@@ -2,7 +2,6 @@ import { StyleSheet, Text, View } from "react-native";
 import { colors } from "../theme";
 import { Offer } from "../types";
 import { AppIcon } from "./AppIcon";
-import React from "react";
 
 const ICON = { percent: "pricetag", bogo: "gift", bundle: "gift", info: "megaphone" } as const;
 const TINT = { percent: colors.yellow, bogo: colors.pink, bundle: colors.teal, info: colors.blue } as const;

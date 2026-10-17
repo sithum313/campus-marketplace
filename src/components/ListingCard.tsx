@@ -3,7 +3,6 @@ import { colors, listPriceOf, money } from "../theme";
 import { Listing } from "../types";
 import { AppIcon } from "./AppIcon";
 import { ProductImage } from "./ProductImage";
-import React from "react";
 
 export function ListingCard({
   item,

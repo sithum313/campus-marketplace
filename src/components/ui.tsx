@@ -2,7 +2,6 @@ import { ReactNode } from "react";
 import { Pressable, StyleSheet, Text, TextInput, TextInputProps, View } from "react-native";
 import { colors } from "../theme";
 import { AppIcon } from "./AppIcon";
-import React from "react";
 
 export function Chip({
   label,

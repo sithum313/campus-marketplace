@@ -2,7 +2,6 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, listPriceOf, money } from "../theme";
 import { Listing } from "../types";
 import { ProductImage } from "./ProductImage";
-import React from "react";
 
 /** Compact tile used for 3-per-row grids (discounts). */
 export function ProductTile({

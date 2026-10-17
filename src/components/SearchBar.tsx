@@ -1,7 +1,6 @@
 import { StyleSheet, TextInput, View } from "react-native";
 import { colors } from "../theme";
 import { AppIcon } from "./AppIcon";
-import React from "react";
 
 export function SearchBar({
   value,

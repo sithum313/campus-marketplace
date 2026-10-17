@@ -5,7 +5,6 @@ import { applyFilters, defaultFilters } from "../lib/filter";
 import { colors } from "../theme";
 import { Filters, Listing } from "../types";
 import { Button, Chip, Field, Label } from "./ui";
-import React from "react";
 
 const SORTS: { key: Filters["sort"]; label: string }[] = [
   { key: "relevance", label: "Relevance" },

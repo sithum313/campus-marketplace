@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import { Animated, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { colors } from "../theme";
 import { AppIcon } from "./AppIcon";
-import React from "react";
 
 export type TabDef = {
   key: string;
@@ -108,9 +107,9 @@ export const buyerTabs: TabDef[] = [
 export const sellerTabs: TabDef[] = [
   { key: "Dashboard", label: "Dashboard", icon: "stats-chart-outline", active: "stats-chart" },
   { key: "Products", label: "Products", icon: "cube-outline", active: "cube" },
-  { key: "Messages", label: "Messages", icon: "mail-outline", active: "mail" },
   { key: "Events", label: "Events", icon: "ticket-outline", active: "ticket" },
   { key: "Orders", label: "Orders", icon: "receipt-outline", active: "receipt" },
+  { key: "Messages", label: "Messages", icon: "mail-outline", active: "mail" },
 ];
 
 const styles = StyleSheet.create({

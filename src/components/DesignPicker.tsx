@@ -3,7 +3,6 @@ import { designById } from "../designs";
 import { colors } from "../theme";
 import { Swatch } from "../types";
 import { AppIcon } from "./AppIcon";
-import React from "react";
 
 /** Grid of design thumbnails. Works for single choice (buyer) and multi choice (seller). */
 export function DesignGrid({
