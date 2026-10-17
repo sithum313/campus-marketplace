@@ -3,60 +3,47 @@ import { AppIcon } from "../components/AppIcon";
 import { Button, page } from "../components/ui";
 import { colors, money } from "../theme";
 import { Conversation, Listing, Offer, Order } from "../types";
+import React from "react";
 
 export function SellerDashboard({
-  name = "Seller",
-  products = [],
-  eventProducts = [],
-  offers = [],
-  orders = [],
+  name,
+  products,
+  eventProducts,
+  offers,
+  orders,
   conversations = [],
   onAddProduct,
   onCreateEvent,
   onOrders,
   onMessages,
 }: {
-  name?: string;
-  products?: Listing[];
-  eventProducts?: Listing[];
-  offers?: Offer[];
-  orders?: Order[];
+  name: string;
+  products: Listing[];
+  eventProducts: Listing[];
+  offers: Offer[];
+  orders: Order[];
   conversations?: Conversation[];
   onAddProduct: () => void;
   onCreateEvent: () => void;
   onOrders: () => void;
-  onMessages?: () => void;
+  onMessages: () => void;
 }) {
-  const safeOrders = orders || [];
-  const safeProducts = products || [];
-  const safeConversations = conversations || [];
-  const safeOffers = offers || [];
-  const safeName = (name || "Seller").trim() || "Seller";
-
-  const newOrders = safeOrders.filter((o) => {
-    const st = (o?.status || "").toLowerCase();
-    return st === "placed" || st === "new";
-  }).length;
-  const revenue = safeOrders
-    .filter((o) => {
-      const st = (o?.status || "").toLowerCase();
-      return st !== "cancelled" && st !== "canceled";
-    })
-    .reduce((s, o) => s + (Number(o?.total) || 0), 0);
-  const activeConversations = safeConversations.length;
+  const newOrders = orders.filter((o) => o.status === "Placed").length;
+  const revenue = orders.filter((o) => o.status !== "Cancelled").reduce((s, o) => s + o.total, 0);
+  const tickets = eventProducts.filter((p) => p.kind === "ticket").reduce((s, p) => s + (p.sold || 0), 0);
   const stats = [
-    { label: "Products live", value: String(safeProducts.filter((p) => !p?.soldOut).length), icon: "cube-outline", tint: colors.teal },
+    { label: "Products live", value: String(products.filter((p) => !p.soldOut).length), icon: "cube-outline", tint: colors.teal },
+    { label: "Buyer inquiries", value: String(conversations.length), icon: "mail-outline", tint: colors.blue },
     { label: "New orders", value: String(newOrders), icon: "notifications-outline", tint: colors.yellow },
-    { label: "Inquiries", value: String(activeConversations), icon: "mail-outline", tint: colors.pink },
-    { label: "Revenue", value: money(Math.round(revenue * 100) / 100), icon: "cash-outline", tint: colors.blue },
+    { label: "Revenue", value: money(Math.round(revenue * 100) / 100), icon: "cash-outline", tint: colors.pink },
   ];
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.hero}>
         <View style={{ flex: 1 }}>
           <Text style={styles.hi}>Seller space</Text>
-          <Text style={styles.heroTitle}>Sell with{"\n"}ease, {safeName.split(" ")[0]}</Text>
-          <Text style={styles.heroSub}>List products, chat with buyers, and fulfill orders in one place.</Text>
+          <Text style={styles.heroTitle}>Sell with{"\n"}ease, {name.split(" ")[0]}</Text>
+          <Text style={styles.heroSub}>List products, run event sales and manage orders in one place.</Text>
         </View>
         <Image source={require("../../assets/onboarding/sell.png")} style={styles.art} resizeMode="contain" />
       </View>
@@ -79,16 +66,14 @@ export function SellerDashboard({
       <Text style={styles.section}>Needs your attention</Text>
       <View style={styles.card}>
         <Text style={styles.cardText}>
-          {newOrders ? `${newOrders} new order${newOrders === 1 ? "" : "s"} waiting for you.` : "No pending orders."}
+          {newOrders ? `${newOrders} new order${newOrders === 1 ? "" : "s"} waiting for you.` : "No new orders right now."}
         </Text>
         <Text style={styles.cardSub}>
-          {activeConversations} buyer inquiry{activeConversations === 1 ? "" : "s"} · {safeOffers.length} event offers
+          {conversations.length} buyer inquiry conversation{conversations.length === 1 ? "" : "s"} · {offers.length} active offer{offers.length === 1 ? "" : "s"}
         </Text>
-        <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+        <View style={{ flexDirection: "row", gap: 10, marginTop: 12 }}>
           <Button kind="soft" label="Open orders" onPress={onOrders} style={{ flex: 1, height: 42 }} />
-          {onMessages ? (
-            <Button kind="outline" label="View messages" onPress={onMessages} style={{ flex: 1, height: 42 }} />
-          ) : null}
+          <Button kind="soft" icon="mail-outline" label="Messages" onPress={onMessages} style={{ flex: 1, height: 42 }} />
         </View>
       </View>
     </ScrollView>

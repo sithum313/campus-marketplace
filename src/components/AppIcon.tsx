@@ -1,4 +1,5 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import React from "react";
 
 /** Use "mci:name" for MaterialCommunityIcons, otherwise an Ionicons name. */
 export function AppIcon({

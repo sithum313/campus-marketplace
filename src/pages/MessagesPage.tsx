@@ -3,65 +3,55 @@ import { EmptyState } from "../components/EmptyState";
 import { Button, page } from "../components/ui";
 import { colors } from "../theme";
 import { Conversation } from "../types";
+import React from "react";
 
 export function MessagesPage({
   conversations,
   onOpen,
   onBrowse,
-  isSeller,
   currentUserId,
 }: {
   conversations: Conversation[];
   onOpen: (id: string) => void;
-  onBrowse: () => void;
-  isSeller?: boolean;
+  onBrowse?: () => void;
   currentUserId?: string;
 }) {
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <Text style={styles.title}>{isSeller ? "Customer inquiries" : "Messages"}</Text>
-      <Text style={styles.sub}>
-        {isSeller ? "Questions from buyers about your items & events" : "Keep campus meetups simple"}
-      </Text>
+      <Text style={styles.title}>Messages</Text>
+      <Text style={styles.sub}>Keep campus meetups simple</Text>
       {conversations.length === 0 ? (
         <EmptyState
-          title={isSeller ? "No inquiries yet" : "Your inbox is quiet"}
-          message={
-            isSeller
-              ? "When campus students ask questions about your products or events, their chats will appear here."
-              : "Tap “Chat” on any product to message its seller. Conversations show up here."
-          }
-          action={isSeller ? "Manage listings" : "Browse listings"}
+          title="Your inbox is quiet"
+          message="Tap “Chat” on any product to message its seller. Conversations show up here."
+          action={onBrowse ? "Browse listings" : undefined}
           onAction={onBrowse}
         />
       ) : (
         <View style={{ gap: 10, marginTop: 18 }}>
           {conversations.map((c) => {
-            const isCurrentUserSeller = isSeller !== undefined
-              ? isSeller
-              : Boolean(currentUserId && (c.sellerId === currentUserId || c.sellerId === "demo-seller"));
-            const otherParty = isCurrentUserSeller ? (c.buyer || "Campus student") : (c.seller || "Seller");
-            const last = c.messages.length > 0 ? c.messages[c.messages.length - 1] : null;
-            const isMine = last
-              ? (last.senderRole
-                  ? (isCurrentUserSeller ? last.senderRole === "seller" : last.senderRole === "buyer")
-                  : (last.senderId && currentUserId ? last.senderId === currentUserId : last.mine))
+            const isSeller = Boolean(currentUserId && c.sellerId === currentUserId);
+            const otherParty = isSeller ? (c.buyer || "Buyer") : c.seller;
+            const last = c.messages[c.messages.length - 1];
+            const isLastMine = last
+              ? last.senderId
+                ? currentUserId
+                  ? last.senderId === currentUserId
+                  : last.mine
+                : last.mine
               : false;
-            const displaySnippet = last
-              ? (isMine ? "You: " : "") + last.text
-              : (c.lastMessage ? c.lastMessage : "Say hello");
 
             return (
               <Pressable key={c.id} style={styles.row} onPress={() => onOpen(c.id)}>
-                <View style={[styles.avatar, isCurrentUserSeller && { backgroundColor: colors.teal }]}>
+                <View style={[styles.avatar, isSeller && { backgroundColor: colors.teal }]}>
                   <Text style={styles.avatarText}>{otherParty.slice(0, 1).toUpperCase()}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                     <Text style={styles.name}>{otherParty}</Text>
-                    {isCurrentUserSeller ? (
-                      <View style={styles.roleTag}>
-                        <Text style={styles.roleTagText}>Buyer</Text>
+                    {isSeller ? (
+                      <View style={styles.badge}>
+                        <Text style={styles.badgeText}>Buyer inquiry</Text>
                       </View>
                     ) : null}
                   </View>
@@ -69,7 +59,7 @@ export function MessagesPage({
                     {c.itemTitle}
                   </Text>
                   <Text style={styles.last} numberOfLines={1}>
-                    {displaySnippet}
+                    {last ? (isLastMine ? "You: " : "") + last.text : (c.lastMessage || "Say hello")}
                   </Text>
                 </View>
               </Pressable>
@@ -107,6 +97,15 @@ const styles = StyleSheet.create({
   name: { color: colors.ink, fontWeight: "800", fontSize: 15 },
   item: { color: colors.muted, fontSize: 11, marginTop: 1 },
   last: { color: colors.ink, fontSize: 13, marginTop: 4 },
-  roleTag: { backgroundColor: "rgba(133,218,225,0.25)", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
-  roleTagText: { color: colors.ink, fontSize: 10, fontWeight: "700" },
+  badge: {
+    backgroundColor: colors.teal,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  badgeText: {
+    color: colors.ink,
+    fontSize: 10,
+    fontWeight: "700",
+  },
 });

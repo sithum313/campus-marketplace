@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors } from "../theme";
+import React from "react";
 
 export function SectionHeader({
   title,

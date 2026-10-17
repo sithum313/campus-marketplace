@@ -2,6 +2,7 @@ import { Platform, Pressable, StatusBar, StyleSheet, Text, View } from "react-na
 import { colors } from "../theme";
 import { Mode } from "../types";
 import { AppIcon } from "./AppIcon";
+import React from "react";
 
 /** Always-visible Buyer / Seller switch pinned to the top-right corner. */
 export function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (mode: Mode) => void }) {

@@ -1,10 +1,9 @@
-import { useState } from "react";
 import { Image, StyleProp, View, ViewStyle } from "react-native";
 import { designById } from "../designs";
-import { productImages } from "../productImages";
 import { colors } from "../theme";
 import { Listing } from "../types";
 import { AppIcon } from "./AppIcon";
+import React from "react";
 
 const tints = [colors.pink, colors.teal, colors.blue, "#FBE9A6"];
 
@@ -18,14 +17,9 @@ export function ProductImage({
   style?: StyleProp<ViewStyle>;
   iconSize?: number;
 }) {
-  const [failed, setFailed] = useState(false);
-  const local = productImages[item.id];
-  if (local)
-    return <Image source={local} style={[{ width: "100%", height: "100%" }, style as object]} />;
-  if (item.image && !failed)
+  if (item.image)
     return (
       <Image
-        onError={() => setFailed(true)}
         source={{ uri: item.image }}
         style={[{ width: "100%", height: "100%" }, style as object]}
       />

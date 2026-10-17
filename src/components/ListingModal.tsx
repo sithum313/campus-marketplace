@@ -10,6 +10,7 @@ import { DesignGrid, ShirtPreview, SwatchRow } from "./DesignPicker";
 import { OfferBanner } from "./OfferBanner";
 import { ProductImage } from "./ProductImage";
 import { Button, Chip, Label, Stepper } from "./ui";
+import React from "react";
 
 export function ListingModal({
   item,
@@ -78,8 +79,7 @@ function Sheet({
 }) {
   const [color, setColor] = useState(item.colors?.[0]?.name);
   const [size, setSize] = useState(item.sizes?.[Math.min(2, item.sizes.length - 1)]);
-  const designs = item.kind === "tshirt" ? undefined : item.designs;
-  const [design, setDesign] = useState(designs?.[0]);
+  const [design, setDesign] = useState(item.designs?.[0]);
   const [qty, setQty] = useState(1);
   const [added, setAdded] = useState(false);
   useEffect(() => setAdded(false), [color, size, design, qty]);
@@ -89,14 +89,14 @@ function Sheet({
   const discount = item.discountPercent ? listPriceOf(item) : null;
   const related = offersFor(item, offers);
   const art = designById(design);
-  const designLabel = "Bookmark design";
+  const designLabel = item.kind === "bookmark" ? "Bookmark design" : "Print design";
 
   return (
     <View style={styles.sheet}>
       <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
         <View>
           {item.kind === "tshirt" && hex ? (
-            <ShirtPreview hex={hex} />
+            <ShirtPreview hex={hex} design={design} />
           ) : item.kind === "bookmark" && art ? (
             <View style={[styles.hero, { alignItems: "center", backgroundColor: "#E9EDF3" }]}>
               <Image source={art.source} style={styles.bookmark} />
@@ -165,10 +165,10 @@ function Sheet({
             </>
           ) : null}
 
-          {designs?.length ? (
+          {item.designs?.length ? (
             <>
-              <Label hint={`${designs.length} designs · tap one to choose`}>{designLabel}</Label>
-              <DesignGrid options={designs} selected={design ? [design] : []} onToggle={setDesign} />
+              <Label hint={`${item.designs.length} designs · tap one to choose`}>{designLabel}</Label>
+              <DesignGrid options={item.designs} selected={design ? [design] : []} onToggle={setDesign} />
             </>
           ) : null}
 
