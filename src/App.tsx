@@ -6,17 +6,15 @@ import {
   getRedirectResult,
   onAuthStateChanged,
   setPersistence,
+  signInAnonymously,
   signInWithEmailAndPassword,
   signInWithPopup,
   signInWithRedirect,
-  signOut,
   updateProfile,
   User,
 } from "firebase/auth";
 import {
-  addDoc,
   collection,
-  deleteDoc,
   doc,
   onSnapshot,
   orderBy,
