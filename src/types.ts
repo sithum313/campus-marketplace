@@ -100,6 +100,11 @@ export type Order = {
   buyerEmail?: string;
   sellerId?: string;
   sellerIds?: string[];
+  meetupSpot?: string;
+  meetupTime?: string;
+  notes?: string;
+  promoCode?: string;
+  discount?: number;
   createdAt?: any;
   updatedAt?: any;
 };

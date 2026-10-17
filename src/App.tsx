@@ -33,7 +33,7 @@ import { ListingModal } from "./components/ListingModal";
 import { ModeToggle } from "./components/ModeToggle";
 import { seedConversations, seedEvents, seedListings, seedOffers, seedOrders, seedSellerOrders } from "./data";
 import { auth, db, firebaseConfigured } from "./firebase";
-import { lineKeyOf, priceCart, variantLabel } from "./lib/cart";
+import { CheckoutDetails, lineKeyOf, priceCart, variantLabel } from "./lib/cart";
 import { applyFilters, defaultFilters } from "./lib/filter";
 import { AllItemsPage } from "./pages/AllItemsPage";
 import { AuthPage, SignUpData } from "./pages/AuthPage";
@@ -485,7 +485,7 @@ export default function App() {
     setTab("Search");
   };
 
-  const checkout = async () => {
+  const checkout = async (details?: CheckoutDetails) => {
     if (needsSignIn) return setAuthOpen(true);
     const { rows, total } = priceCart(cart, items, offers);
     if (!rows.length) return;
@@ -519,13 +519,16 @@ export default function App() {
     const eventIds = Array.from(new Set(rows.map((r) => r.item.eventId)));
     const orderNumber = `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
 
+    const promoDiscount = details?.promoDiscount || 0;
+    const payableTotal = Math.max(0, Math.round((total - promoDiscount) * 100) / 100);
+
     const orderPayload: Order = {
       id: orderNumber,
       date: today(),
       status: "Placed" as OrderStatus,
       party: sellers.length > 2 ? `${sellers.length} sellers` : (sellers[0] || "Seller"),
       eventId: eventIds.length === 1 ? eventIds[0] : undefined,
-      total,
+      total: payableTotal,
       lines: rows.map((r) => ({
         title: r.item.title,
         qty: r.line.qty,
@@ -538,6 +541,11 @@ export default function App() {
       buyerEmail: user?.email || "",
       sellerId: targetSellerId,
       sellerIds,
+      meetupSpot: details?.meetupSpotName || "Campus Safe Handover",
+      meetupTime: details?.meetupTime,
+      notes: details?.notes,
+      promoCode: details?.promoCode,
+      discount: promoDiscount,
     };
 
     // 1. Immediately update buyer orders and persist
@@ -1108,6 +1116,13 @@ export default function App() {
               offers={offers}
               onQty={setLineQty}
               onRemove={removeLine}
+              onSaveForLater={(itemId, key) => {
+                if (!savedIds.includes(itemId)) {
+                  toggleSaved(itemId);
+                }
+                removeLine(key);
+                flash("Moved to Saved items");
+              }}
               onOpen={setSelected}
               onBrowse={() => goTab("Search")}
               onCheckout={checkout}
