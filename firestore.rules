@@ -25,8 +25,15 @@ service cloud.firestore {
       }
     }
 
+    // An order is visible only to its buyer and its seller.
     match /orders/{orderId} {
-      allow read, write: if signedIn();
+      allow read: if signedIn()
+        && (resource.data.buyerId == request.auth.uid
+            || resource.data.sellerId == request.auth.uid);
+      allow create: if signedIn() && request.resource.data.buyerId == request.auth.uid;
+      allow update: if signedIn()
+        && (resource.data.buyerId == request.auth.uid
+            || resource.data.sellerId == request.auth.uid);
     }
 
     match /events/{eventId} {
