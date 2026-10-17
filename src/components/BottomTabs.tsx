@@ -1,3 +1,4 @@
+// BottomTabs - mobile ergonomics
 import { useEffect, useRef } from "react";
 import { Animated, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { colors } from "../theme";
