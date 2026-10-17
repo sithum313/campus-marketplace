@@ -25,6 +25,7 @@ import {
   setDoc,
   updateDoc,
   where,
+  writeBatch,
 } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Modal, Platform, SafeAreaView, StyleSheet, Text, View } from "react-native";
@@ -163,9 +164,9 @@ export default function App() {
   // buyer data
   const [cart, setCart] = useState<CartLine[]>([]);
   const [orders, setOrders] = useState<Order[]>(() => {
+    if (firebaseConfigured) return []; // real orders come only from Firestore
     const local = getStoredOrders();
-    if (local.length > 0) return local;
-    return firebaseConfigured ? [] : seedOrders;
+    return local.length > 0 ? local : seedOrders;
   });
   const [conversations, setConversations] = useState<Conversation[]>(
     firebaseConfigured ? [] : seedConversations,
@@ -175,9 +176,9 @@ export default function App() {
 
   // seller data
   const [sellerOrders, setSellerOrders] = useState<Order[]>(() => {
+    if (firebaseConfigured) return []; // real orders come only from Firestore
     const local = getStoredSellerOrders();
-    if (local.length > 0) return local;
-    return seedSellerOrders;
+    return local.length > 0 ? local : seedSellerOrders;
   });
 
   const ownerId = user?.uid || "demo-seller";
@@ -247,87 +248,39 @@ export default function App() {
       (error) => flash(`Could not load saved items: ${error.message}`));
   }, [user?.uid]);
 
-  // Sync Buyer Orders from Firestore
+  const newestFirst = (a: Order, b: Order) =>
+    (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0);
+
+  // Sync Buyer Orders from Firestore: orders where I am the buyer
   useEffect(() => {
-    if (!db || !user) return;
+    if (!db) return;
+    if (!user) { setOrders([]); return; }
     const q = query(collection(db, "orders"), where("buyerId", "==", user.uid));
     return onSnapshot(
       q,
       (snapshot) => {
         const list = snapshot.docs.map((d) => ({ ...d.data(), id: d.id }) as Order);
-        list.sort((a, b) => {
-          const tA = a.createdAt?.toMillis?.() || 0;
-          const tB = b.createdAt?.toMillis?.() || 0;
-          return tB - tA;
-        });
-        setOrders((prev) => {
-          const cloudIds = new Set(list.map((o) => o.id));
-          const localOnly = prev.filter((o) => !cloudIds.has(o.id) && o.id.startsWith("ORD-"));
-          const merged = [...list, ...localOnly];
-          setStoredOrders(merged);
-          return merged;
-        });
+        setOrders(list.sort(newestFirst));
       },
-      (error) => console.warn("Buyer orders sync notice:", error.message),
+      (error) => flash(`Could not load your orders: ${error.message}`),
     );
   }, [user?.uid]);
 
-  // Sync Seller Orders from Firestore (dual-query for sellerId and sellerIds)
+  // Sync Seller Orders from Firestore: orders where I am the seller
   useEffect(() => {
-    if (!db || !user) return;
-
-    const cloudOrdersMap = new Map<string, Order>();
-
-    const updateCombinedSellerOrders = () => {
-      const cloudList = Array.from(cloudOrdersMap.values());
-      cloudList.sort((a, b) => {
-        const tA = a.createdAt?.toMillis?.() || 0;
-        const tB = b.createdAt?.toMillis?.() || 0;
-        return tB - tA;
-      });
-
-      setSellerOrders((prev) => {
-        const cloudIds = new Set(cloudList.map((o) => o.id));
-        const localOnly = prev.filter((o) => !cloudIds.has(o.id));
-        const merged = [...cloudList, ...localOnly];
-        setStoredSellerOrders(merged);
-        return merged;
-      });
-    };
-
-    const processSnapshot = (snapshot: any) => {
-      snapshot.docs.forEach((d: any) => {
-        const data = d.data();
-        const item: Order = {
-          ...data,
-          id: d.id,
-          party: data.buyerName || data.party || "Buyer",
-        };
-        cloudOrdersMap.set(d.id, item);
-      });
-      updateCombinedSellerOrders();
-    };
-
-    // Query 1: Direct sellerId match (matches rules with resource.data.sellerId == request.auth.uid)
-    const q1 = query(collection(db, "orders"), where("sellerId", "==", user.uid));
-    const unsub1 = onSnapshot(
-      q1,
-      processSnapshot,
-      (err) => console.warn("Seller orders (by sellerId) notice:", err.message),
+    if (!db) return;
+    if (!user) { setSellerOrders([]); return; }
+    const q = query(collection(db, "orders"), where("sellerId", "==", user.uid));
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const list = snapshot.docs.map(
+          (d) => ({ ...d.data(), id: d.id, party: d.data().buyerName || "Buyer" }) as Order,
+        );
+        setSellerOrders(list.sort(newestFirst));
+      },
+      (error) => flash(`Could not load seller orders: ${error.message}`),
     );
-
-    // Query 2: Array-contains match (matches multi-seller arrays)
-    const q2 = query(collection(db, "orders"), where("sellerIds", "array-contains", user.uid));
-    const unsub2 = onSnapshot(
-      q2,
-      processSnapshot,
-      (err) => console.warn("Seller orders (by sellerIds) notice:", err.message),
-    );
-
-    return () => {
-      unsub1();
-      unsub2();
-    };
   }, [user?.uid]);
 
   // Sync user conversations (both where user is buyer or seller)
@@ -420,6 +373,7 @@ export default function App() {
   const items = useMemo(
     () =>
       [...localItems, ...cloudItems, ...seedListings]
+        .filter((item, index, all) => all.findIndex((x) => x.id === item.id) === index)
         .filter((item) => !removed.includes(item.id))
         .map((item) => (edits[item.id] ? { ...item, ...edits[item.id] } : item)),
     [localItems, cloudItems, edits, removed],
@@ -485,9 +439,12 @@ export default function App() {
     setTab("Search");
   };
 
+  const newOrderId = () =>
+    `ORD-${Date.now().toString(36).slice(-6)}${Math.random().toString(36).slice(2, 5)}`.toUpperCase();
+
   const checkout = async () => {
     if (needsSignIn) return setAuthOpen(true);
-    const { rows, total } = priceCart(cart, items, offers);
+    const { rows } = priceCart(cart, items, offers);
     if (!rows.length) return;
     if (
       rows.length !== cart.length ||
@@ -501,95 +458,98 @@ export default function App() {
       flash("Some cart items are unavailable or exceed stock. Please review your cart.");
       return;
     }
-    const sellers = Array.from(new Set(rows.map((r) => r.item.seller)));
-    const itemSellerId = rows.find((r) => r.item.sellerId)?.item.sellerId;
-    const targetSellerId = itemSellerId || user?.uid || ownerId || "demo-seller";
-    const sellerIds = Array.from(
-      new Set(
-        [
-          itemSellerId,
-          targetSellerId,
-          user?.uid,
-          ownerId,
-          "demo-seller",
-          ...rows.map((r) => r.item.sellerId),
-        ].filter(Boolean),
-      ),
-    ) as string[];
-    const eventIds = Array.from(new Set(rows.map((r) => r.item.eventId)));
-    const orderNumber = `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
 
-    const orderPayload: Order = {
-      id: orderNumber,
-      date: today(),
-      status: "Placed" as OrderStatus,
-      party: sellers.length > 2 ? `${sellers.length} sellers` : (sellers[0] || "Seller"),
-      eventId: eventIds.length === 1 ? eventIds[0] : undefined,
-      total,
-      lines: rows.map((r) => ({
-        title: r.item.title,
-        qty: r.line.qty,
-        unitPrice: r.item.price,
-        variant: variantLabel(r.line) || undefined,
-        itemId: r.item.id,
-      })),
-      buyerId: user?.uid || ownerId,
-      buyerName: ownerName,
-      buyerEmail: user?.email || "",
-      sellerId: targetSellerId,
-      sellerIds,
-    };
-
-    // 1. Immediately update buyer orders and persist
-    setOrders((o) => {
-      const next = [orderPayload, ...o.filter((x) => x.id !== orderNumber)];
-      setStoredOrders(next);
-      return next;
+    // One order per seller, so each seller only receives their own products.
+    const bySeller = new Map<string, typeof rows>();
+    for (const r of rows) {
+      const sid = r.item.sellerId || "demo-seller";
+      bySeller.set(sid, [...(bySeller.get(sid) || []), r]);
+    }
+    const newOrders: Order[] = [];
+    bySeller.forEach((sellerRows, sellerId) => {
+      const eventIds = Array.from(new Set(sellerRows.map((r) => r.item.eventId)));
+      newOrders.push({
+        id: newOrderId(),
+        date: today(),
+        status: "Placed" as OrderStatus,
+        party: sellerRows[0].item.seller || "Seller",
+        eventId: eventIds.length === 1 ? eventIds[0] : undefined,
+        total: priceCart(sellerRows.map((r) => r.line), items, offers).total,
+        lines: sellerRows.map((r) => ({
+          title: r.item.title,
+          qty: r.line.qty,
+          unitPrice: r.item.price,
+          variant: variantLabel(r.line) || undefined,
+          itemId: r.item.id,
+        })),
+        buyerId: user?.uid || ownerId,
+        buyerName: ownerName,
+        buyerEmail: user?.email || "",
+        sellerId,
+      });
     });
 
-    // 2. Immediately update seller orders with the exact same orderNumber
-    const sellerOrderEntry: Order = {
-      ...orderPayload,
-      party: ownerName,
-    };
-    setSellerOrders((o) => {
-      const next = [sellerOrderEntry, ...o.filter((x) => x.id !== orderNumber)];
-      setStoredSellerOrders(next);
-      return next;
-    });
+    // Total quantity bought per product (the same product can be in the cart twice with different options)
+    const qtyById = new Map<string, number>();
+    for (const r of rows) qtyById.set(r.item.id, (qtyById.get(r.item.id) || 0) + r.line.qty);
+    const boughtItems = Array.from(new Set(rows.map((r) => r.item)));
 
     if (db && user) {
+      // Save to Firestore first. If this fails, tell the buyer and keep the cart.
       try {
-        await setDoc(doc(db, "orders", orderNumber), {
-          ...clean(orderPayload),
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-        // Update stock in Firestore for cloud listings
-        for (const r of rows) {
-          if (cloudItems.some((ci) => ci.id === r.item.id)) {
-            const currentStock = r.item.stock;
-            const nextStock = currentStock === undefined ? undefined : Math.max(0, currentStock - r.line.qty);
-            await updateDoc(doc(db, "listings", r.item.id), {
-              sold: (r.item.sold || 0) + r.line.qty,
-              ...(nextStock === undefined ? {} : { stock: nextStock, soldOut: nextStock === 0 }),
-              updatedAt: serverTimestamp(),
-            });
-          }
+        const batch = writeBatch(db);
+        for (const order of newOrders) {
+          batch.set(doc(db, "orders", order.id), {
+            ...clean(order),
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
         }
+        await batch.commit();
       } catch (error) {
-        console.warn("Could not save order to cloud:", error);
+        flash(error instanceof Error ? `Order not sent: ${error.message}` : "Order not sent");
+        return;
       }
+      // Update stock on the seller's listing (the order is already saved)
+      for (const item of boughtItems) {
+        if (!cloudItems.some((ci) => ci.id === item.id)) continue;
+        const qty = qtyById.get(item.id) || 0;
+        const nextStock = item.stock === undefined ? undefined : Math.max(0, item.stock - qty);
+        try {
+          await updateDoc(doc(db, "listings", item.id), {
+            sold: (item.sold || 0) + qty,
+            ...(nextStock === undefined ? {} : { stock: nextStock, soldOut: nextStock === 0 }),
+            updatedAt: serverTimestamp(),
+          });
+        } catch (error) {
+          console.warn("Could not update stock:", error);
+        }
+      }
+      // The order listeners above show the new orders to the buyer and to each seller.
+    } else {
+      // Demo mode (no Firebase): keep everything on this device
+      setOrders((o) => {
+        const next = [...newOrders, ...o];
+        setStoredOrders(next);
+        return next;
+      });
+      setSellerOrders((o) => {
+        const next = [...newOrders.map((x) => ({ ...x, party: ownerName })), ...o];
+        setStoredSellerOrders(next);
+        return next;
+      });
     }
 
-    // Keep local stock / sold counts in step
+    // Keep local stock / sold counts in step for demo items (cloud items update from Firestore)
     setEdits((current) => {
       const next = { ...current };
-      for (const r of rows) {
-        const stock = r.item.stock === undefined ? undefined : Math.max(0, r.item.stock - r.line.qty);
-        next[r.item.id] = {
-          ...next[r.item.id],
-          sold: (r.item.sold || 0) + r.line.qty,
+      for (const item of boughtItems) {
+        if (cloudItems.some((ci) => ci.id === item.id)) continue;
+        const qty = qtyById.get(item.id) || 0;
+        const stock = item.stock === undefined ? undefined : Math.max(0, item.stock - qty);
+        next[item.id] = {
+          ...next[item.id],
+          sold: (item.sold || 0) + qty,
           ...(stock === undefined ? {} : { stock, soldOut: stock === 0 }),
         };
       }
@@ -599,7 +559,7 @@ export default function App() {
     setCart([]);
     setProfileTab((p) => ({ tab: "ongoing", nonce: p.nonce + 1 }));
     goTab("Profile");
-    flash(`Order ${orderNumber} placed`);
+    flash(`Order ${newOrders.map((o) => o.id).join(", ")} placed`);
   };
 
   const cancelOrder = async (id: string) => {
@@ -610,6 +570,7 @@ export default function App() {
       } catch (e) {
         flash(e instanceof Error ? e.message : "Could not cancel order");
       }
+      return; // listeners refresh both the buyer and the seller
     }
     setOrders((o) => {
       const next = o.map((x) => (x.id === id ? { ...x, status: "Cancelled" as OrderStatus } : x));
@@ -968,9 +929,11 @@ export default function App() {
     if (db && user) {
       try {
         await updateDoc(doc(db, "orders", id), { status, updatedAt: serverTimestamp() });
+        flash(`Order status: ${status}`);
       } catch (e) {
-        console.warn("Could not update order status in Firestore:", e);
+        flash(e instanceof Error ? e.message : "Could not update order");
       }
+      return; // listeners refresh both the seller and the buyer
     }
     setSellerOrders((list) => {
       const next = list.map((o) => (o.id === id ? { ...o, status } : o));
