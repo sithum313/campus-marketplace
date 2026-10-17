@@ -6,17 +6,15 @@ import {
   getRedirectResult,
   onAuthStateChanged,
   setPersistence,
+  signInAnonymously,
   signInWithEmailAndPassword,
   signInWithPopup,
   signInWithRedirect,
-  signOut,
   updateProfile,
   User,
 } from "firebase/auth";
 import {
-  addDoc,
   collection,
-  deleteDoc,
   doc,
   onSnapshot,
   orderBy,
@@ -121,7 +119,7 @@ const getStoredSellerOrders = (): Order[] => {
       if (saved) return JSON.parse(saved);
     }
   } catch {}
-  return firebaseConfigured ? [] : seedSellerOrders;
+  return seedSellerOrders;
 };
 
 const setStoredSellerOrders = (list: Order[]) => {
@@ -177,7 +175,7 @@ export default function App() {
   const [sellerOrders, setSellerOrders] = useState<Order[]>(() => {
     const local = getStoredSellerOrders();
     if (local.length > 0) return local;
-    return firebaseConfigured ? [] : seedSellerOrders;
+    return seedSellerOrders;
   });
 
   const ownerId = user?.uid || "demo-seller";
@@ -233,12 +231,8 @@ export default function App() {
     const listingsQuery = query(collection(db, "listings"), orderBy("createdAt", "desc"));
     return onSnapshot(
       listingsQuery,
-      (snapshot) => {
-        const cloudDocs = snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }) as Listing);
-        setCloudItems(cloudDocs);
-        const cloudIds = new Set(cloudDocs.map((item) => item.id));
-        setLocalItems((prev) => prev.filter((item) => !cloudIds.has(item.id)));
-      },
+      (snapshot) =>
+        setCloudItems(snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }) as Listing)),
       () => setCloudItems([]),
     );
   }, []);
@@ -280,18 +274,13 @@ export default function App() {
   useEffect(() => {
     if (!db || !user) return;
 
-    let q1Docs: Order[] = [];
-    let q2Docs: Order[] = [];
+    const cloudOrdersMap = new Map<string, Order>();
 
     const updateCombinedSellerOrders = () => {
-      const cloudOrdersMap = new Map<string, Order>();
-      for (const item of [...q1Docs, ...q2Docs]) {
-        cloudOrdersMap.set(item.id, item);
-      }
       const cloudList = Array.from(cloudOrdersMap.values());
       cloudList.sort((a, b) => {
-        const tA = a.createdAt?.toMillis?.() || a.updatedAt?.toMillis?.() || 0;
-        const tB = b.createdAt?.toMillis?.() || b.updatedAt?.toMillis?.() || 0;
+        const tA = a.createdAt?.toMillis?.() || 0;
+        const tB = b.createdAt?.toMillis?.() || 0;
         return tB - tA;
       });
 
@@ -304,18 +293,24 @@ export default function App() {
       });
     };
 
-    // Query 1: Direct sellerId match
+    const processSnapshot = (snapshot: any) => {
+      snapshot.docs.forEach((d: any) => {
+        const data = d.data();
+        const item: Order = {
+          ...data,
+          id: d.id,
+          party: data.buyerName || data.party || "Buyer",
+        };
+        cloudOrdersMap.set(d.id, item);
+      });
+      updateCombinedSellerOrders();
+    };
+
+    // Query 1: Direct sellerId match (matches rules with resource.data.sellerId == request.auth.uid)
     const q1 = query(collection(db, "orders"), where("sellerId", "==", user.uid));
     const unsub1 = onSnapshot(
       q1,
-      (snapshot) => {
-        q1Docs = snapshot.docs.map((d) => ({
-          ...d.data(),
-          id: d.id,
-          party: d.data().buyerName || d.data().party || "Buyer",
-        }) as Order);
-        updateCombinedSellerOrders();
-      },
+      processSnapshot,
       (err) => console.warn("Seller orders (by sellerId) notice:", err.message),
     );
 
@@ -323,14 +318,7 @@ export default function App() {
     const q2 = query(collection(db, "orders"), where("sellerIds", "array-contains", user.uid));
     const unsub2 = onSnapshot(
       q2,
-      (snapshot) => {
-        q2Docs = snapshot.docs.map((d) => ({
-          ...d.data(),
-          id: d.id,
-          party: d.data().buyerName || d.data().party || "Buyer",
-        }) as Order);
-        updateCombinedSellerOrders();
-      },
+      processSnapshot,
       (err) => console.warn("Seller orders (by sellerIds) notice:", err.message),
     );
 
@@ -426,25 +414,20 @@ export default function App() {
     };
   }, []);
 
-  /** Every listing the buyer can see: your new ones, cloud ones, then the demo catalogue (deduplicated by id). */
-  const items = useMemo(() => {
-    const seen = new Set<string>();
-    const result: Listing[] = [];
-    const all = [...localItems, ...cloudItems, ...seedListings];
-    for (const raw of all) {
-      if (!raw || !raw.id) continue;
-      if (seen.has(raw.id) || removed.includes(raw.id)) continue;
-      seen.add(raw.id);
-      result.push(edits[raw.id] ? { ...raw, ...edits[raw.id] } : raw);
-    }
-    return result;
-  }, [localItems, cloudItems, edits, removed]);
+  /** Every listing the buyer can see: your new ones, cloud ones, then the demo catalogue. */
+  const items = useMemo(
+    () =>
+      [...localItems, ...cloudItems, ...seedListings]
+        .filter((item) => !removed.includes(item.id))
+        .map((item) => (edits[item.id] ? { ...item, ...edits[item.id] } : item)),
+    [localItems, cloudItems, edits, removed],
+  );
   const eventProducts = useMemo(() => items.filter((i) => i.eventId), [items]);
   const myProducts = useMemo(
     () => items.filter((i) => i.sellerId === ownerId && !i.eventId),
     [items, ownerId],
   );
-  const visibleItems = useMemo(() => items.filter((i) => !i.soldOut && i.stock !== 0), [items]);
+  const visibleItems = useMemo(() => items.filter((i) => !i.soldOut), [items]);
   const filteredItems = useMemo(
     () => applyFilters(visibleItems, queryText, filters),
     [visibleItems, queryText, filters],
@@ -517,16 +500,17 @@ export default function App() {
       return;
     }
     const sellers = Array.from(new Set(rows.map((r) => r.item.seller)));
-    const itemSellerIds = Array.from(new Set(rows.map((r) => r.item.sellerId).filter(Boolean))) as string[];
-    // IMPORTANT: never fall back to ownerId (buyer) as sellerId — that would route the order
-    // to the buyer's seller-orders query and hide it from the real seller.
-    const targetSellerId = itemSellerIds[0] || "demo-seller";
+    const itemSellerId = rows.find((r) => r.item.sellerId)?.item.sellerId;
+    const targetSellerId = itemSellerId || user?.uid || ownerId || "demo-seller";
     const sellerIds = Array.from(
       new Set(
         [
+          itemSellerId,
           targetSellerId,
-          ...itemSellerIds,
-          ...(itemSellerIds.length === 0 ? ["demo-seller"] : []),
+          user?.uid,
+          ownerId,
+          "demo-seller",
+          ...rows.map((r) => r.item.sellerId),
         ].filter(Boolean),
       ),
     ) as string[];
@@ -554,48 +538,14 @@ export default function App() {
       sellerIds,
     };
 
-    // 1. Calculate stock updates for all purchased items (defaulting to 1 if unspecified)
-    const stockUpdates: Record<string, { stock: number; sold: number; soldOut: boolean }> = {};
-    for (const r of rows) {
-      const currentStock = r.item.stock !== undefined ? r.item.stock : 1;
-      const nextStock = Math.max(0, currentStock - r.line.qty);
-      const nextSoldOut = nextStock === 0;
-      stockUpdates[r.item.id] = {
-        stock: nextStock,
-        sold: (r.item.sold || 0) + r.line.qty,
-        soldOut: nextSoldOut,
-      };
-    }
-
-    // 2. Immediately update local stock across all UI caches
-    setLocalItems((list) =>
-      list.map((item) => {
-        const u = stockUpdates[item.id];
-        return u ? { ...item, ...u } : item;
-      }),
-    );
-    setCloudItems((list) =>
-      list.map((item) => {
-        const u = stockUpdates[item.id];
-        return u ? { ...item, ...u } : item;
-      }),
-    );
-    setEdits((current) => {
-      const next = { ...current };
-      for (const [id, u] of Object.entries(stockUpdates)) {
-        next[id] = { ...next[id], ...u };
-      }
-      return next;
-    });
-
-    // 3. Immediately update buyer orders and persist
+    // 1. Immediately update buyer orders and persist
     setOrders((o) => {
       const next = [orderPayload, ...o.filter((x) => x.id !== orderNumber)];
       setStoredOrders(next);
       return next;
     });
 
-    // 4. Immediately update seller orders with the exact same orderNumber
+    // 2. Immediately update seller orders with the exact same orderNumber
     const sellerOrderEntry: Order = {
       ...orderPayload,
       party: ownerName,
@@ -606,7 +556,6 @@ export default function App() {
       return next;
     });
 
-    // 5. Sync order and stock reductions to Cloud Firestore
     if (db && user) {
       try {
         await setDoc(doc(db, "orders", orderNumber), {
@@ -614,21 +563,36 @@ export default function App() {
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
-
-        for (const [itemId, u] of Object.entries(stockUpdates)) {
-          try {
-            await updateDoc(doc(db, "listings", itemId), {
-              ...u,
+        // Update stock in Firestore for cloud listings
+        for (const r of rows) {
+          if (cloudItems.some((ci) => ci.id === r.item.id)) {
+            const currentStock = r.item.stock;
+            const nextStock = currentStock === undefined ? undefined : Math.max(0, currentStock - r.line.qty);
+            await updateDoc(doc(db, "listings", r.item.id), {
+              sold: (r.item.sold || 0) + r.line.qty,
+              ...(nextStock === undefined ? {} : { stock: nextStock, soldOut: nextStock === 0 }),
               updatedAt: serverTimestamp(),
             });
-          } catch (e) {
-            console.warn("Could not update listing stock in Firestore:", e);
           }
         }
       } catch (error) {
         console.warn("Could not save order to cloud:", error);
       }
     }
+
+    // Keep local stock / sold counts in step
+    setEdits((current) => {
+      const next = { ...current };
+      for (const r of rows) {
+        const stock = r.item.stock === undefined ? undefined : Math.max(0, r.item.stock - r.line.qty);
+        next[r.item.id] = {
+          ...next[r.item.id],
+          sold: (r.item.sold || 0) + r.line.qty,
+          ...(stock === undefined ? {} : { stock, soldOut: stock === 0 }),
+        };
+      }
+      return next;
+    });
 
     setCart([]);
     setProfileTab((p) => ({ tab: "ongoing", nonce: p.nonce + 1 }));
@@ -898,10 +862,7 @@ export default function App() {
               updatedAt: serverTimestamp(),
             }),
           );
-          setLocalItems((list) => {
-            if (list.some((item) => item.id === docRef.id)) return list;
-            return [{ ...draft, id: docRef.id, seller: ownerName, sellerId: user.uid }, ...list];
-          });
+          setLocalItems((list) => [{ ...draft, id: docRef.id, seller: ownerName, sellerId: user.uid }, ...list]);
           flash("Product listed");
           return;
         } catch (e) {
@@ -914,10 +875,7 @@ export default function App() {
         seller: ownerName,
         sellerId: ownerId,
       };
-      setLocalItems((list) => {
-        if (list.some((item) => item.id === newId)) return list;
-        return [newItem, ...list];
-      });
+      setLocalItems((list) => [newItem, ...list]);
       flash("Product listed");
     }
   };
@@ -930,9 +888,8 @@ export default function App() {
         console.warn("Could not delete listing from Firestore:", e);
       }
     }
-    setRemoved((list) => (list.includes(id) ? list : [...list, id]));
+    setRemoved((list) => [...list, id]);
     setLocalItems((list) => list.filter((i) => i.id !== id));
-    setCloudItems((list) => list.filter((i) => i.id !== id));
     flash("Listing removed");
   };
 
