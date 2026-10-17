@@ -1,4 +1,3 @@
-// MessagesPage - active chat conversations
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { EmptyState } from "../components/EmptyState";
 import { Button, page } from "../components/ui";
