@@ -149,7 +149,69 @@ export const CAMPUS_PROMOS: CampusPromo[] = [
     label: "$3 Freshman Welcome Perk",
     minSpend: 10,
   },
+  {
+    code: "STUDYGEAR",
+    discountType: "percent",
+    amount: 15,
+    label: "15% Textbooks & Study Gear",
+    minSpend: 20,
+  },
 ];
+
+export type CampusTimeWindow = {
+  id: string;
+  label: string;
+  desc: string;
+  icon: string;
+};
+
+export const CAMPUS_TIME_WINDOWS: CampusTimeWindow[] = [
+  {
+    id: "morning",
+    label: "Morning Break",
+    desc: "10:00 AM - 12:00 PM (Between morning lectures)",
+    icon: "sunny-outline",
+  },
+  {
+    id: "lunch",
+    label: "Lunch Hours",
+    desc: "12:00 PM - 2:00 PM (Campus center & cafeteria peak)",
+    icon: "restaurant-outline",
+  },
+  {
+    id: "afternoon",
+    label: "Afternoon",
+    desc: "2:00 PM - 4:00 PM (Library & study commons)",
+    icon: "time-outline",
+  },
+  {
+    id: "evening",
+    label: "Evening",
+    desc: "4:00 PM - 6:00 PM (Post-lecture & gym handover)",
+    icon: "moon-outline",
+  },
+  {
+    id: "flexible",
+    label: "Flexible / Chat",
+    desc: "Coordinate exact handover time directly via chat",
+    icon: "chatbubbles-outline",
+  },
+];
+
+export const meetupSpotById = (id?: string) =>
+  CAMPUS_MEETUP_SPOTS.find((s) => s.id === id);
+
+export const timeWindowById = (id?: string) =>
+  CAMPUS_TIME_WINDOWS.find((t) => t.id === id);
+
+export type CheckoutDetails = {
+  meetupSpotId?: string;
+  meetupSpotName?: string;
+  meetupTime?: string;
+  notes?: string;
+  promoCode?: string;
+  promoDiscount?: number;
+};
 
 export function applyPromoCode(
   rawCode: string,

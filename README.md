@@ -37,6 +37,9 @@ The client Firebase configuration is intentionally public. Access control belong
 - Product sheet: short description, heart (save), chat with seller, add to cart.
 - Event merch: colour, size and design pickers (all bookmark / t-shirt designs shown as a grid).
 - Event offers and notices (percent off, buy-one-get-one, free gift, plain notices) applied in the cart.
+- Campus cart & handover checkout: campus meetup spot selector (Library Lobby, Union Hall, Sci Quad, Rec Center), preferred handover time window selector, buyer handover note, student promo vouchers (e.g. CAMPUS10, SAVE5, STUDYGEAR), Save for Later wishlist action, multi-seller notifications, and interactive order review & safety confirmation modal.
+- Profile: cart shortcut, ongoing orders, past orders with designated campus meetup spot, time window, handover note, applied vouchers, and saved items.
+- Real-time messages with sellers with auto-scrolling, quick suggestions, and instant Firestore delivery.
 - Profile: cart shortcut, ongoing orders, past orders and saved items.
 
 **Seller mode** (switch in the top-right corner)
