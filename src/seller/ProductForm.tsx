@@ -1,4 +1,3 @@
-// ProductForm - edit mode enabled
 import { useState } from "react";
 import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { DesignGrid } from "../components/DesignPicker";

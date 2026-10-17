@@ -1,4 +1,3 @@
-// SellerProducts - inventory list
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { ProductImage } from "../components/ProductImage";
 import { Button, page } from "../components/ui";
