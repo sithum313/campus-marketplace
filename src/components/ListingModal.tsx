@@ -1,4 +1,3 @@
-// ListingModal - preview & details
 import { useEffect, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { designById } from "../designs";
