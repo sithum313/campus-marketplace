@@ -1,4 +1,3 @@
-// AllItemsPage - catalog integration
 import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { AppIcon } from "../components/AppIcon";
