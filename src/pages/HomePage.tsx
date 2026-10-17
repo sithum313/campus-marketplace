@@ -1,5 +1,4 @@
 import {
-  ImageBackground,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -8,11 +7,15 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { AppIcon } from "../components/AppIcon";
+import { ListingCard } from "../components/ListingCard";
 import { ProductImage } from "../components/ProductImage";
 import { ProductTile } from "../components/ProductTile";
+import { SearchBar } from "../components/SearchBar";
 import { SectionHeader, SeeMoreButton } from "../components/SectionHeader";
 import { categories, categoryIcons, categoryTints } from "../data";
-import { eventCovers } from "../designs";
+import { OfferBanner } from "../components/OfferBanner";
+import { CoverImage } from "../components/CoverImage";
+import { coverKeyFor } from "../designs";
 import { colors } from "../theme";
 import { CampusEvent, Listing, Offer } from "../types";
 
@@ -20,24 +23,39 @@ export function HomePage({
   items,
   events,
   offers,
+  query,
+  savedIds,
+  onQueryChange,
+  onSearch,
   onOpen,
+  onSave,
   onCategory,
   onSeeDiscounts,
   onSeeEvents,
+  onSeeAll,
 }: {
   items: Listing[];
   events: CampusEvent[];
   offers: Offer[];
+  query: string;
+  savedIds: string[];
+  onQueryChange: (value: string) => void;
+  onSearch: () => void;
   onOpen: (item: Listing) => void;
+  onSave: (id: string) => void;
   onCategory: (category: string) => void;
   onSeeDiscounts: () => void;
   onSeeEvents: () => void;
+  onSeeAll: () => void;
 }) {
   const { width } = useWindowDimensions();
   const pageWidth = Math.min(width, 520);
   const tileWidth = (pageWidth - 40 - 24) / 3;
 
   const discounted = items.filter((item) => item.discountPercent).slice(0, 6);
+  const popular = items.filter((item) => item.popular).slice(0, 6);
+  const rows: Listing[][] = [];
+  for (let i = 0; i < popular.length; i += 2) rows.push(popular.slice(i, i + 2));
 
   return (
     <ScrollView
@@ -53,6 +71,10 @@ export function HomePage({
       </View>
       <Text style={styles.tagline}>Everything your campus buys and sells</Text>
 
+      <View style={{ marginTop: 18 }}>
+        <SearchBar value={query} onChangeText={onQueryChange} onSubmit={onSearch} />
+      </View>
+
       {/* Discounts */}
       <SectionHeader title="Discounts" subtitle="Student deals right now" />
       <View style={styles.grid3}>
@@ -66,6 +88,24 @@ export function HomePage({
         ))}
       </View>
       <SeeMoreButton label="See more discounts" onPress={onSeeDiscounts} />
+
+      {/* Offers & notices from event organizers */}
+      <SectionHeader title="Offers & notices" subtitle="Deals and updates from event organizers" />
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.eventRow}
+        style={styles.bleed}
+      >
+        {offers.map((offer) => (
+          <OfferBanner
+            key={offer.id}
+            offer={offer}
+            width={280}
+            eventTitle={events.find((e) => e.id === offer.eventId)?.title}
+          />
+        ))}
+      </ScrollView>
 
       {/* Events */}
       <SectionHeader title="Upcoming events" subtitle="Tickets and merch from campus events" />
@@ -114,6 +154,25 @@ export function HomePage({
           ))}
       </ScrollView>
 
+      {/* Popular */}
+      <SectionHeader title="Popular items" subtitle="What students are buying" />
+      <View style={{ gap: 14 }}>
+        {rows.map((row, index) => (
+          <View key={index} style={styles.pair}>
+            {row.map((item) => (
+              <ListingCard
+                key={item.id}
+                item={item}
+                saved={savedIds.includes(item.id)}
+                onSave={() => onSave(item.id)}
+                onOpen={() => onOpen(item)}
+              />
+            ))}
+            {row.length === 1 ? <View style={{ flex: 1 }} /> : null}
+          </View>
+        ))}
+      </View>
+      <SeeMoreButton label="See all items" onPress={onSeeAll} />
     </ScrollView>
   );
 }
@@ -131,33 +190,22 @@ export function EventCard({
   onOpen: (item: Listing) => void;
   wide?: boolean;
 }) {
-  const cover = event.cover ? eventCovers[event.cover] : undefined;
-  const banner = (
-    <>
-      {cover ? <View style={styles.shade} pointerEvents="none" /> : null}
-      <View style={styles.dateBox}>
-        <Text style={styles.dateMonth}>{event.month}</Text>
-        <Text style={styles.dateDay}>{event.day}</Text>
-      </View>
-      <View>
-        <Text style={[styles.eventTitle, cover ? { color: "#FFF" } : null]} numberOfLines={2}>
+  return (
+    <View style={[styles.event, wide && { width: "100%" }]}>
+      <CoverImage coverKey={coverKeyFor(event)} style={styles.banner}>
+        <View style={styles.dateBox}>
+          <Text style={styles.dateMonth}>{event.month}</Text>
+          <Text style={styles.dateDay}>{event.day}</Text>
+        </View>
+      </CoverImage>
+      <View style={[styles.eventInfo, { borderLeftColor: event.color }]}>
+        <Text style={styles.eventTitle} numberOfLines={2}>
           {event.title}
         </Text>
-        <Text style={[styles.eventMeta, cover ? { color: "#FFF", opacity: 0.9 } : null]}>
+        <Text style={styles.eventMeta} numberOfLines={1}>
           {event.venue} · by {event.organizer}
         </Text>
       </View>
-    </>
-  );
-  return (
-    <View style={[styles.event, wide && { width: "100%" }]}>
-      {cover ? (
-        <ImageBackground source={cover} style={styles.banner}>
-          {banner}
-        </ImageBackground>
-      ) : (
-        <View style={[styles.banner, { backgroundColor: event.color }]}>{banner}</View>
-      )}
       <View style={styles.eventProducts}>
         {products.map((item) => (
           <Pressable key={item.id} style={styles.eventItem} onPress={() => onOpen(item)}>
@@ -202,7 +250,7 @@ const styles = StyleSheet.create({
   brand: { color: colors.ink, fontSize: 40, fontWeight: "400", letterSpacing: -1.2 },
   brandBold: { fontWeight: "900" },
   dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.yellow, marginTop: 14 },
-  tagline: { color: colors.muted, fontSize: 13, marginTop: 2, marginBottom: 6 },
+  tagline: { color: colors.muted, fontSize: 13, marginTop: 2 },
   grid3: { flexDirection: "row", flexWrap: "wrap", gap: 12, rowGap: 16 },
   bleed: { marginHorizontal: -20 },
   eventRow: { paddingHorizontal: 20, gap: 14 },
@@ -214,8 +262,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line,
   },
-  banner: { height: 150, justifyContent: "space-between", padding: 14 },
-  shade: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(30,34,48,0.38)" },
+  banner: { width: "100%", aspectRatio: 2, padding: 12 },
+  eventInfo: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 2, borderLeftWidth: 5, marginLeft: 0 },
   offerList: { paddingHorizontal: 14, paddingBottom: 14, gap: 6 },
   offerRow: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.bg, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7 },
   offerText: { flex: 1, color: colors.ink, fontSize: 12, fontWeight: "700" },
@@ -229,8 +277,8 @@ const styles = StyleSheet.create({
   },
   dateMonth: { color: colors.muted, fontSize: 10, fontWeight: "800", letterSpacing: 1 },
   dateDay: { color: colors.ink, fontSize: 20, fontWeight: "900" },
-  eventTitle: { color: colors.ink, fontSize: 15, fontWeight: "800" },
-  eventMeta: { color: colors.ink, opacity: 0.7, fontSize: 12, marginTop: 2 },
+  eventTitle: { color: colors.ink, fontSize: 16, fontWeight: "800" },
+  eventMeta: { color: colors.muted, fontSize: 12, marginTop: 3 },
   eventProducts: { flexDirection: "row", padding: 12, gap: 8 },
   eventItem: { flex: 1, alignItems: "center" },
   eventThumb: { width: "100%", aspectRatio: 1, borderRadius: 14, overflow: "hidden" },
@@ -240,4 +288,5 @@ const styles = StyleSheet.create({
   cat: { width: 76, alignItems: "center" },
   catCircle: { width: 68, height: 68, borderRadius: 34, alignItems: "center", justifyContent: "center" },
   catLabel: { color: colors.ink, fontSize: 12, fontWeight: "600", marginTop: 8 },
+  pair: { flexDirection: "row", gap: 14 },
 });

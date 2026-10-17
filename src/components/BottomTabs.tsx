@@ -109,6 +109,7 @@ export const sellerTabs: TabDef[] = [
   { key: "Products", label: "Products", icon: "cube-outline", active: "cube" },
   { key: "Events", label: "Events", icon: "ticket-outline", active: "ticket" },
   { key: "Orders", label: "Orders", icon: "receipt-outline", active: "receipt" },
+  { key: "Messages", label: "Messages", icon: "mail-outline", active: "mail" },
 ];
 
 const styles = StyleSheet.create({
