@@ -1,4 +1,4 @@
-// CartPage - price summary
+// CartPage - quantity stepper
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { AppIcon } from "../components/AppIcon";
 import { ProductImage } from "../components/ProductImage";
