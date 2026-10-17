@@ -1,4 +1,3 @@
-// cart.ts - item variant keying
 import { designById } from "../designs";
 import { CartLine, Listing, Offer } from "../types";
 
