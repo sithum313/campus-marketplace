@@ -1,4 +1,5 @@
 import {
+  ImageBackground,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,8 +15,7 @@ import { SearchBar } from "../components/SearchBar";
 import { SectionHeader, SeeMoreButton } from "../components/SectionHeader";
 import { categories, categoryIcons, categoryTints } from "../data";
 import { OfferBanner } from "../components/OfferBanner";
-import { CoverImage } from "../components/CoverImage";
-import { coverKeyFor } from "../designs";
+import { eventCovers } from "../designs";
 import { colors } from "../theme";
 import { CampusEvent, Listing, Offer } from "../types";
 
@@ -190,22 +190,33 @@ export function EventCard({
   onOpen: (item: Listing) => void;
   wide?: boolean;
 }) {
-  return (
-    <View style={[styles.event, wide && { width: "100%" }]}>
-      <CoverImage coverKey={coverKeyFor(event)} style={styles.banner}>
-        <View style={styles.dateBox}>
-          <Text style={styles.dateMonth}>{event.month}</Text>
-          <Text style={styles.dateDay}>{event.day}</Text>
-        </View>
-      </CoverImage>
-      <View style={[styles.eventInfo, { borderLeftColor: event.color }]}>
-        <Text style={styles.eventTitle} numberOfLines={2}>
+  const cover = event.cover ? eventCovers[event.cover] : undefined;
+  const banner = (
+    <>
+      {cover ? <View style={styles.shade} pointerEvents="none" /> : null}
+      <View style={styles.dateBox}>
+        <Text style={styles.dateMonth}>{event.month}</Text>
+        <Text style={styles.dateDay}>{event.day}</Text>
+      </View>
+      <View>
+        <Text style={[styles.eventTitle, cover ? { color: "#FFF" } : null]} numberOfLines={2}>
           {event.title}
         </Text>
-        <Text style={styles.eventMeta} numberOfLines={1}>
+        <Text style={[styles.eventMeta, cover ? { color: "#FFF", opacity: 0.9 } : null]}>
           {event.venue} · by {event.organizer}
         </Text>
       </View>
+    </>
+  );
+  return (
+    <View style={[styles.event, wide && { width: "100%" }]}>
+      {cover ? (
+        <ImageBackground source={cover} style={styles.banner}>
+          {banner}
+        </ImageBackground>
+      ) : (
+        <View style={[styles.banner, { backgroundColor: event.color }]}>{banner}</View>
+      )}
       <View style={styles.eventProducts}>
         {products.map((item) => (
           <Pressable key={item.id} style={styles.eventItem} onPress={() => onOpen(item)}>
@@ -262,8 +273,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line,
   },
-  banner: { width: "100%", aspectRatio: 2, padding: 12 },
-  eventInfo: { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 2, borderLeftWidth: 5, marginLeft: 0 },
+  banner: { height: 150, justifyContent: "space-between", padding: 14 },
+  shade: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(30,34,48,0.38)" },
   offerList: { paddingHorizontal: 14, paddingBottom: 14, gap: 6 },
   offerRow: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.bg, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7 },
   offerText: { flex: 1, color: colors.ink, fontSize: 12, fontWeight: "700" },
@@ -277,8 +288,8 @@ const styles = StyleSheet.create({
   },
   dateMonth: { color: colors.muted, fontSize: 10, fontWeight: "800", letterSpacing: 1 },
   dateDay: { color: colors.ink, fontSize: 20, fontWeight: "900" },
-  eventTitle: { color: colors.ink, fontSize: 16, fontWeight: "800" },
-  eventMeta: { color: colors.muted, fontSize: 12, marginTop: 3 },
+  eventTitle: { color: colors.ink, fontSize: 15, fontWeight: "800" },
+  eventMeta: { color: colors.ink, opacity: 0.7, fontSize: 12, marginTop: 2 },
   eventProducts: { flexDirection: "row", padding: 12, gap: 8 },
   eventItem: { flex: 1, alignItems: "center" },
   eventThumb: { width: "100%", aspectRatio: 1, borderRadius: 14, overflow: "hidden" },

@@ -5,31 +5,21 @@ import { Field, ScreenHeader } from "../components/ui";
 import { colors } from "../theme";
 import { Conversation } from "../types";
 
-const BUYER_QUICK = ["Is this still available?", "Can we meet at the library?", "Can you do a lower price?"];
-const SELLER_QUICK = ["Yes, it's still available!", "Sure, library meetup works for me.", "Price is fixed, thanks!"];
+const QUICK = ["Is this still available?", "Can we meet at the library?", "Can you do a lower price?"];
 
 export function ChatPage({
   conversation,
   onSend,
   onBack,
   currentUserId,
-  isSeller: isSellerProp,
 }: {
   conversation: Conversation;
   onSend: (text: string) => void;
   onBack: () => void;
   currentUserId?: string;
-  isSeller?: boolean;
 }) {
   const [text, setText] = useState("");
   const scroller = useRef<ScrollView>(null);
-
-  const isSeller = isSellerProp !== undefined
-    ? isSellerProp
-    : Boolean(currentUserId && (conversation.sellerId === currentUserId || conversation.sellerId === "demo-seller"));
-  const otherName = isSeller ? (conversation.buyer || "Campus student") : (conversation.seller || "Seller");
-  const quickReplies = isSeller ? SELLER_QUICK : BUYER_QUICK;
-
   const send = (value: string) => {
     const clean = value.trim();
     if (!clean) return;
@@ -38,12 +28,16 @@ export function ChatPage({
     setTimeout(() => scroller.current?.scrollToEnd({ animated: true }), 50);
   };
 
+  const isSeller = Boolean(currentUserId && conversation.sellerId === currentUserId);
+  const title = isSeller ? (conversation.buyer || "Buyer") : conversation.seller;
+  const subtitle = isSeller ? `Inquiry on: ${conversation.itemTitle}` : `About: ${conversation.itemTitle}`;
+
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <View style={styles.top}>
-        <ScreenHeader title={otherName} onBack={onBack} />
+        <ScreenHeader title={title} onBack={onBack} />
         <Text style={styles.about} numberOfLines={1}>
-          {isSeller ? "Inquiry for: " : "About: "}{conversation.itemTitle}
+          {subtitle}
         </Text>
       </View>
       <ScrollView
@@ -53,23 +47,25 @@ export function ChatPage({
       >
         {conversation.messages.length === 0 ? (
           <View style={{ alignItems: "center", marginTop: 30, gap: 10 }}>
-            <Text style={styles.hint}>Start the conversation with {otherName}</Text>
-            {quickReplies.map((q) => (
-              <Pressable key={q} style={styles.quick} onPress={() => send(q)}>
-                <Text style={styles.quickText}>{q}</Text>
-              </Pressable>
-            ))}
+            <Text style={styles.hint}>
+              {isSeller
+                ? `Send a message to ${conversation.buyer || "buyer"}`
+                : `Start the conversation with ${conversation.seller}`}
+            </Text>
+            {!isSeller &&
+              QUICK.map((q) => (
+                <Pressable key={q} style={styles.quick} onPress={() => send(q)}>
+                  <Text style={styles.quickText}>{q}</Text>
+                </Pressable>
+              ))}
           </View>
         ) : (
           conversation.messages.map((m) => {
-            let isMine: boolean;
-            if (m.senderRole) {
-              isMine = isSeller ? m.senderRole === "seller" : m.senderRole === "buyer";
-            } else if (m.senderId && currentUserId) {
-              isMine = m.senderId === currentUserId;
-            } else {
-              isMine = m.mine;
-            }
+            const isMine = m.senderId
+              ? currentUserId
+                ? m.senderId === currentUserId
+                : m.mine
+              : m.mine;
             return (
               <View key={m.id} style={[styles.bubble, isMine ? styles.mine : styles.theirs]}>
                 <Text style={{ color: isMine ? "#FFF" : colors.ink, fontSize: 14 }}>{m.text}</Text>

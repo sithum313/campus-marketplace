@@ -3,6 +3,7 @@ import { ProductImage } from "../components/ProductImage";
 import { Button, page } from "../components/ui";
 import { colors, money } from "../theme";
 import { Listing } from "../types";
+import React from "react";
 
 export function SellerProducts({
   products,
