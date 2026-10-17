@@ -1,4 +1,3 @@
-// SellerApp - initial tabs
 import { useState } from "react";
 import { BottomTabs, sellerTabs } from "../components/BottomTabs";
 import { ChatPage } from "../pages/ChatPage";
