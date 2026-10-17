@@ -1,4 +1,3 @@
-// SellerDashboard - metric cards
 import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { AppIcon } from "../components/AppIcon";
 import { Button, page } from "../components/ui";
