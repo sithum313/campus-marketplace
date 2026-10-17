@@ -1,4 +1,4 @@
-// ChatPage - firestore realtime sending
+// ChatPage - auto scroll and keyboard avoiding
 import { useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { AppIcon } from "../components/AppIcon";
