@@ -10,14 +10,11 @@ import {
   signInWithEmailAndPassword,
   signInWithPopup,
   signInWithRedirect,
-  signOut,
   updateProfile,
   User,
 } from "firebase/auth";
 import {
-  addDoc,
   collection,
-  deleteDoc,
   doc,
   onSnapshot,
   orderBy,
@@ -25,6 +22,7 @@ import {
   serverTimestamp,
   setDoc,
   updateDoc,
+  where,
 } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Modal, Platform, SafeAreaView, StyleSheet, Text, View } from "react-native";
@@ -33,7 +31,7 @@ import { ListingModal } from "./components/ListingModal";
 import { ModeToggle } from "./components/ModeToggle";
 import { seedEvents, seedListings, seedOffers, seedOrders, seedSellerOrders } from "./data";
 import { auth, db, firebaseConfigured } from "./firebase";
-import { lineKeyOf, priceCart, variantLabel } from "./lib/cart";
+import { CheckoutDetails, lineKeyOf, priceCart, variantLabel } from "./lib/cart";
 import { applyFilters, defaultFilters } from "./lib/filter";
 import { AllItemsPage } from "./pages/AllItemsPage";
 import { AuthPage, SignUpData } from "./pages/AuthPage";
@@ -107,13 +105,23 @@ export default function App() {
 
   // buyer data
   const [cart, setCart] = useState<CartLine[]>([]);
-  const [orders, setOrders] = useState<Order[]>(firebaseConfigured ? [] : seedOrders);
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [orders, setOrders] = useState<Order[]>(() => {
+    const local = getStoredOrders();
+    if (local.length > 0) return local;
+    return firebaseConfigured ? [] : seedOrders;
+  });
+  const [conversations, setConversations] = useState<Conversation[]>(
+    firebaseConfigured ? [] : seedConversations,
+  );
   const [chatId, setChatId] = useState<string | null>(null);
   const [profileTab, setProfileTab] = useState<{ tab: ProfileTab; nonce: number }>({ tab: "ongoing", nonce: 0 });
 
   // seller data
-  const [sellerOrders, setSellerOrders] = useState<Order[]>(seedSellerOrders);
+  const [sellerOrders, setSellerOrders] = useState<Order[]>(() => {
+    const local = getStoredSellerOrders();
+    if (local.length > 0) return local;
+    return seedSellerOrders;
+  });
 
   const ownerId = user?.uid || "demo-seller";
   const ownerName = user?.displayName || user?.email?.split("@")[0] || "You";
@@ -160,6 +168,183 @@ export default function App() {
         setCloudItems(snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }) as Listing)),
       () => setCloudItems([]),
     );
+  }, []);
+
+  // Sync saved favorites
+  useEffect(() => {
+    if (!db || !user) { setSavedIds([]); return; }
+    return onSnapshot(collection(db, "users", user.uid, "saved"),
+      (snapshot) => setSavedIds(snapshot.docs.map((entry) => entry.id)),
+      (error) => flash(`Could not load saved items: ${error.message}`));
+  }, [user?.uid]);
+
+  // Sync Buyer Orders from Firestore
+  useEffect(() => {
+    if (!db || !user) return;
+    const q = query(collection(db, "orders"), where("buyerId", "==", user.uid));
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const list = snapshot.docs.map((d) => ({ ...d.data(), id: d.id }) as Order);
+        list.sort((a, b) => {
+          const tA = a.createdAt?.toMillis?.() || 0;
+          const tB = b.createdAt?.toMillis?.() || 0;
+          return tB - tA;
+        });
+        setOrders((prev) => {
+          const cloudIds = new Set(list.map((o) => o.id));
+          const localOnly = prev.filter((o) => !cloudIds.has(o.id) && o.id.startsWith("ORD-"));
+          const merged = [...list, ...localOnly];
+          setStoredOrders(merged);
+          return merged;
+        });
+      },
+      (error) => console.warn("Buyer orders sync notice:", error.message),
+    );
+  }, [user?.uid]);
+
+  // Sync Seller Orders from Firestore (dual-query for sellerId and sellerIds)
+  useEffect(() => {
+    if (!db || !user) return;
+
+    const cloudOrdersMap = new Map<string, Order>();
+
+    const updateCombinedSellerOrders = () => {
+      const cloudList = Array.from(cloudOrdersMap.values());
+      cloudList.sort((a, b) => {
+        const tA = a.createdAt?.toMillis?.() || 0;
+        const tB = b.createdAt?.toMillis?.() || 0;
+        return tB - tA;
+      });
+
+      setSellerOrders((prev) => {
+        const cloudIds = new Set(cloudList.map((o) => o.id));
+        const localOnly = prev.filter((o) => !cloudIds.has(o.id));
+        const merged = [...cloudList, ...localOnly];
+        setStoredSellerOrders(merged);
+        return merged;
+      });
+    };
+
+    const processSnapshot = (snapshot: any) => {
+      snapshot.docs.forEach((d: any) => {
+        const data = d.data();
+        const item: Order = {
+          ...data,
+          id: d.id,
+          party: data.buyerName || data.party || "Buyer",
+        };
+        cloudOrdersMap.set(d.id, item);
+      });
+      updateCombinedSellerOrders();
+    };
+
+    // Query 1: Direct sellerId match (matches rules with resource.data.sellerId == request.auth.uid)
+    const q1 = query(collection(db, "orders"), where("sellerId", "==", user.uid));
+    const unsub1 = onSnapshot(
+      q1,
+      processSnapshot,
+      (err) => console.warn("Seller orders (by sellerId) notice:", err.message),
+    );
+
+    // Query 2: Array-contains match (matches multi-seller arrays)
+    const q2 = query(collection(db, "orders"), where("sellerIds", "array-contains", user.uid));
+    const unsub2 = onSnapshot(
+      q2,
+      processSnapshot,
+      (err) => console.warn("Seller orders (by sellerIds) notice:", err.message),
+    );
+
+    return () => {
+      unsub1();
+      unsub2();
+    };
+  }, [user?.uid]);
+
+  // Sync user conversations (both where user is buyer or seller)
+  useEffect(() => {
+    if (!db || !user) {
+      if (!firebaseConfigured) {
+        setConversations(seedConversations);
+      } else {
+        setConversations([]);
+      }
+      return;
+    }
+    const q = query(collection(db, "conversations"), where("memberIds", "array-contains", user.uid));
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        setConversations((prev) => {
+          const list = snapshot.docs.map((d) => {
+            const data = d.data();
+            const existing = prev.find((c) => c.id === d.id);
+            return {
+              id: d.id,
+              ...data,
+              messages: existing?.messages || [],
+            } as Conversation;
+          });
+          list.sort((a, b) => (b.lastMessageAt || 0) - (a.lastMessageAt || 0));
+          return list;
+        });
+      },
+      (error) => console.warn("Conversations sync error:", error),
+    );
+  }, [user?.uid]);
+
+  // Sync messages in the currently active chat (works for both buyer and seller)
+  useEffect(() => {
+    if (!db || !user || !chatId || chatId.startsWith("c-")) return;
+    const q = query(collection(db, "conversations", chatId, "messages"), orderBy("createdAt", "asc"));
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const msgs: Message[] = snapshot.docs.map((d) => {
+          const data = d.data();
+          return {
+            id: d.id,
+            text: data.text || "",
+            senderId: data.senderId,
+            senderName: data.senderName,
+            senderRole: data.senderRole,
+            mine: data.senderId === user.uid,
+            at: data.createdAt?.toMillis?.() || Date.now(),
+          };
+        });
+        setConversations((current) =>
+          current.map((c) => (c.id === chatId ? { ...c, messages: msgs } : c)),
+        );
+      },
+      (error) => console.warn("Messages sync error:", error),
+    );
+  }, [chatId, user?.uid]);
+
+  // Sync events & offers from Firestore
+  useEffect(() => {
+    if (!db) return;
+    const unsubEvents = onSnapshot(
+      collection(db, "events"),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          setEvents(snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as CampusEvent));
+        }
+      },
+      (error) => console.warn("Events sync notice:", error.message),
+    );
+    const unsubOffers = onSnapshot(
+      collection(db, "offers"),
+      (snapshot) => {
+        if (!snapshot.empty) {
+          setOffers(snapshot.docs.map((d) => ({ id: d.id, ...d.data() }) as Offer));
+        }
+      },
+      (error) => console.warn("Offers sync notice:", error.message),
+    );
+    return () => {
+      unsubEvents();
+      unsubOffers();
+    };
   }, []);
 
   /** Every listing the buyer can see: your new ones, cloud ones, then the demo catalogue. */
@@ -212,32 +397,112 @@ export default function App() {
     setTab("Search");
   };
 
-  const checkout = () => {
+  const checkout = async (details?: CheckoutDetails) => {
     if (needsSignIn) return setAuthOpen(true);
     const { rows, total } = priceCart(cart, items, offers);
     if (!rows.length) return;
+    if (
+      rows.length !== cart.length ||
+      rows.some(
+        (r) =>
+          r.item.soldOut ||
+          (r.item.stock !== undefined &&
+            cart.filter((l) => l.itemId === r.item.id).reduce((n, l) => n + l.qty, 0) > r.item.stock!),
+      )
+    ) {
+      flash("Some cart items are unavailable or exceed stock. Please review your cart.");
+      return;
+    }
     const sellers = Array.from(new Set(rows.map((r) => r.item.seller)));
+    const itemSellerId = rows.find((r) => r.item.sellerId)?.item.sellerId;
+    const targetSellerId = itemSellerId || user?.uid || ownerId || "demo-seller";
+    const sellerIds = Array.from(
+      new Set(
+        [
+          itemSellerId,
+          targetSellerId,
+          user?.uid,
+          ownerId,
+          "demo-seller",
+          ...rows.map((r) => r.item.sellerId),
+        ].filter(Boolean),
+      ),
+    ) as string[];
     const eventIds = Array.from(new Set(rows.map((r) => r.item.eventId)));
-    const id = `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
-    setOrders((o) => [
-      {
-        id,
-        date: today(),
-        status: "Placed",
-        party: sellers.length > 2 ? `${sellers.length} sellers` : sellers.join(" & "),
-        eventId: eventIds.length === 1 ? eventIds[0] : undefined,
-        total,
-        lines: rows.map((r) => ({
-          title: r.item.title,
-          qty: r.line.qty,
-          unitPrice: r.item.price,
-          variant: variantLabel(r.line) || undefined,
-          itemId: r.item.id,
-        })),
-      },
-      ...o,
-    ]);
-    // keep local stock / sold counts in step
+    const orderNumber = `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const promoDiscount = details?.promoDiscount || 0;
+    const payableTotal = Math.max(0, Math.round((total - promoDiscount) * 100) / 100);
+
+    const orderPayload: Order = {
+      id: orderNumber,
+      date: today(),
+      status: "Placed" as OrderStatus,
+      party: sellers.length > 2 ? `${sellers.length} sellers` : (sellers[0] || "Seller"),
+      eventId: eventIds.length === 1 ? eventIds[0] : undefined,
+      total: payableTotal,
+      lines: rows.map((r) => ({
+        title: r.item.title,
+        qty: r.line.qty,
+        unitPrice: r.item.price,
+        variant: variantLabel(r.line) || undefined,
+        itemId: r.item.id,
+      })),
+      buyerId: user?.uid || ownerId,
+      buyerName: ownerName,
+      buyerEmail: user?.email || "",
+      sellerId: targetSellerId,
+      sellerIds,
+      meetupSpot: details?.meetupSpotName || "Campus Safe Handover",
+      meetupTime: details?.meetupTime,
+      notes: details?.notes,
+      promoCode: details?.promoCode,
+      discount: promoDiscount,
+    };
+
+    // 1. Immediately update buyer orders and persist
+    setOrders((o) => {
+      const next = [orderPayload, ...o.filter((x) => x.id !== orderNumber)];
+      setStoredOrders(next);
+      return next;
+    });
+
+    // 2. Immediately update seller orders with the exact same orderNumber
+    const sellerOrderEntry: Order = {
+      ...orderPayload,
+      party: ownerName,
+    };
+    setSellerOrders((o) => {
+      const next = [sellerOrderEntry, ...o.filter((x) => x.id !== orderNumber)];
+      setStoredSellerOrders(next);
+      return next;
+    });
+
+    if (db && user) {
+      try {
+        await setDoc(doc(db, "orders", orderNumber), {
+          ...clean(orderPayload),
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        // Update stock in Firestore for cloud listings
+        for (const r of rows) {
+          if (cloudItems.some((ci) => ci.id === r.item.id)) {
+            const currentStock = r.item.stock;
+            const nextStock = currentStock === undefined ? undefined : Math.max(0, currentStock - r.line.qty);
+            await updateDoc(doc(db, "listings", r.item.id), {
+              sold: (r.item.sold || 0) + r.line.qty,
+              ...(nextStock === undefined ? {} : { stock: nextStock, soldOut: nextStock === 0 }),
+              updatedAt: serverTimestamp(),
+            });
+          }
+        }
+      } catch (error) {
+        console.warn("Could not save order to cloud:", error);
+      }
+    }
+
+    // Keep local stock / sold counts in step
     setEdits((current) => {
       const next = { ...current };
       for (const r of rows) {
@@ -272,7 +537,28 @@ export default function App() {
     setCart([]);
     setProfileTab((p) => ({ tab: "ongoing", nonce: p.nonce + 1 }));
     goTab("Profile");
-    flash(`Order ${id} placed`);
+    flash(`Order ${orderNumber} placed`);
+  };
+
+  const cancelOrder = async (id: string) => {
+    if (db && user) {
+      try {
+        await updateDoc(doc(db, "orders", id), { status: "Cancelled", updatedAt: serverTimestamp() });
+        flash("Order cancelled");
+      } catch (e) {
+        flash(e instanceof Error ? e.message : "Could not cancel order");
+      }
+    }
+    setOrders((o) => {
+      const next = o.map((x) => (x.id === id ? { ...x, status: "Cancelled" as OrderStatus } : x));
+      setStoredOrders(next);
+      return next;
+    });
+    setSellerOrders((o) => {
+      const next = o.map((x) => (x.id === id ? { ...x, status: "Cancelled" as OrderStatus } : x));
+      setStoredSellerOrders(next);
+      return next;
+    });
   };
   const cancelOrder = (id: string) =>
     setOrders((o) => o.map((x) => (x.id === id ? { ...x, status: "Cancelled" } : x)));
@@ -426,7 +712,189 @@ export default function App() {
     }
   };
 
-  if (!onboarded) {
+  const sellerConversations = useMemo(
+    () =>
+      conversations.filter(
+        (c) =>
+          c.sellerId === ownerId ||
+          (c.sellerId === "demo-seller" && (!user || mode === "seller")) ||
+          c.seller === ownerName ||
+          (!c.sellerId && c.memberIds?.includes(ownerId)),
+      ),
+    [conversations, ownerId, ownerName, user, mode],
+  );
+  const buyerConversations = useMemo(
+    () =>
+      conversations.filter(
+        (c) =>
+          c.buyerId === ownerId ||
+          (c.buyerId === "buyer-alex" && !user) ||
+          (c.buyerId === "buyer-nethmi" && !user) ||
+          c.buyer === ownerName ||
+          (!c.buyerId && c.memberIds?.includes(ownerId)),
+      ),
+    [conversations, ownerId, ownerName, user],
+  );
+  const displaySellerConversations = sellerConversations.length ? sellerConversations : conversations;
+  const displayBuyerConversations = buyerConversations.length ? buyerConversations : conversations;
+
+  /* ---------- seller actions ---------- */
+
+  const saveProduct = async (draft: ProductDraft, id?: string) => {
+    if (id) {
+      if (db && user) {
+        try {
+          await updateDoc(doc(db, "listings", id), clean({ ...draft, updatedAt: serverTimestamp() }));
+        } catch (e) {
+          console.warn("Could not update listing in Firestore:", e);
+        }
+      }
+      setEdits((current) => ({ ...current, [id]: draft }));
+      flash("Product updated");
+    } else {
+      const newId = `prod-${Date.now()}`;
+      if (db && user) {
+        try {
+          const docRef = await addDoc(
+            collection(db, "listings"),
+            clean({
+              ...draft,
+              seller: ownerName,
+              sellerId: user.uid,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            }),
+          );
+          setLocalItems((list) => [{ ...draft, id: docRef.id, seller: ownerName, sellerId: user.uid }, ...list]);
+          flash("Product listed");
+          return;
+        } catch (e) {
+          console.warn("Could not save listing in Firestore:", e);
+        }
+      }
+      const newItem: Listing = {
+        ...draft,
+        id: newId,
+        seller: ownerName,
+        sellerId: ownerId,
+      };
+      setLocalItems((list) => [newItem, ...list]);
+      flash("Product listed");
+    }
+  };
+
+  const deleteProduct = async (id: string) => {
+    if (db && user) {
+      try {
+        await deleteDoc(doc(db, "listings", id));
+      } catch (e) {
+        console.warn("Could not delete listing from Firestore:", e);
+      }
+    }
+    setRemoved((list) => [...list, id]);
+    setLocalItems((list) => list.filter((i) => i.id !== id));
+    flash("Listing removed");
+  };
+
+  const toggleSoldOut = async (id: string) => {
+    const item = items.find((i) => i.id === id);
+    const nextSoldOut = !item?.soldOut;
+    if (db && user) {
+      try {
+        await updateDoc(doc(db, "listings", id), { soldOut: nextSoldOut, updatedAt: serverTimestamp() });
+      } catch (e) {
+        console.warn("Could not toggle sold out in Firestore:", e);
+      }
+    }
+    setEdits((current) => ({
+      ...current,
+      [id]: { ...(current[id] || {}), soldOut: nextSoldOut },
+    }));
+    flash(nextSoldOut ? "Item marked as sold out" : "Item relisted");
+  };
+
+  const saveEvent = (data: Omit<CampusEvent, "id">, id?: string): string => {
+    if (id) {
+      if (db && user) {
+        updateDoc(doc(db, "events", id), clean({ ...data, updatedAt: serverTimestamp() })).catch(console.warn);
+      }
+      setEvents((list) => list.map((e) => (e.id === id ? { ...e, ...data } : e)));
+      flash("Event updated");
+      return id;
+    }
+    const newId = `evt-${Date.now()}`;
+    if (db && user) {
+      setDoc(
+        doc(db, "events", newId),
+        clean({
+          ...data,
+          id: newId,
+          organizerId: user.uid,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        }),
+      ).catch(console.warn);
+    }
+    setEvents((list) => [{ ...data, id: newId }, ...list]);
+    flash("Event created");
+    return newId;
+  };
+
+  const deleteEvent = async (id: string) => {
+    if (db && user) {
+      try {
+        await deleteDoc(doc(db, "events", id));
+      } catch (e) {
+        console.warn("Could not delete event from Firestore:", e);
+      }
+    }
+    setEvents((list) => list.filter((e) => e.id !== id));
+    flash("Event deleted");
+  };
+
+  const saveOffer = async (offer: Omit<Offer, "id">) => {
+    const newId = `off-${Date.now()}`;
+    if (db && user) {
+      try {
+        await setDoc(doc(db, "offers", newId), clean({ ...offer, id: newId, createdAt: serverTimestamp() }));
+      } catch (e) {
+        console.warn("Could not save offer in Firestore:", e);
+      }
+    }
+    setOffers((list) => [{ ...offer, id: newId }, ...list]);
+    flash("Offer created");
+  };
+
+  const setOrderStatus = async (id: string, status: OrderStatus) => {
+    if (db && user) {
+      try {
+        await updateDoc(doc(db, "orders", id), { status, updatedAt: serverTimestamp() });
+      } catch (e) {
+        console.warn("Could not update order status in Firestore:", e);
+      }
+    }
+    setSellerOrders((list) => {
+      const next = list.map((o) => (o.id === id ? { ...o, status } : o));
+      setStoredSellerOrders(next);
+      return next;
+    });
+    setOrders((list) => {
+      const next = list.map((o) => (o.id === id ? { ...o, status } : o));
+      setStoredOrders(next);
+      return next;
+    });
+    flash(`Order status: ${status}`);
+  };
+
+  if (authLoading && !user) {
+    return (
+      <SafeAreaView style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
+        <ActivityIndicator size="large" color={colors.ink} />
+      </SafeAreaView>
+    );
+  }
+
+  if (!onboarded && !user) {
     return (
       <OnboardingPage
         onDone={() => {
@@ -525,6 +993,13 @@ export default function App() {
               offers={offers}
               onQty={setLineQty}
               onRemove={removeLine}
+              onSaveForLater={(itemId, key) => {
+                if (!savedIds.includes(itemId)) {
+                  toggleSaved(itemId);
+                }
+                removeLine(key);
+                flash("Moved to Saved items");
+              }}
               onOpen={setSelected}
               onBrowse={() => goTab("Search")}
               onCheckout={checkout}

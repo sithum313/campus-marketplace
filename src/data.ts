@@ -1,6 +1,6 @@
 import { colors } from "./theme";
 import { capColors, shirtColors, shirtSizes } from "./designs";
-import { CampusEvent, Listing, Offer, Order, ProductKind } from "./types";
+import { CampusEvent, Listing, Offer, ProductKind } from "./types";
 
 export const categories = [
   "All items",
@@ -275,75 +275,5 @@ export const seedOffers: Offer[] = [
     kind: "info",
     title: "Gates open at 5:00 PM",
     detail: "Bring your student ID. Tickets are checked at the main gate.",
-  },
-];
-
-/** Demo orders so the profile tabs are not empty in demo mode. */
-export const seedOrders: Order[] = [
-  {
-    id: "ORD-1042",
-    date: "12 Oct 2026",
-    status: "Ready for pickup",
-    party: "Maya R.",
-    lines: [{ title: "Calculus: Early Transcendentals", qty: 1, unitPrice: 28, itemId: "1" }],
-    total: 28,
-  },
-  {
-    id: "ORD-1031",
-    date: "3 Oct 2026",
-    status: "Placed",
-    party: "Student Union",
-    eventId: "e1",
-    lines: [{ title: "Freshers Night ticket", qty: 2, unitPrice: 5, itemId: "e1-ticket" }],
-    total: 5,
-  },
-  {
-    id: "ORD-0988",
-    date: "21 Sep 2026",
-    status: "Completed",
-    party: "Alex P.",
-    lines: [{ title: "Noise-cancelling headphones", qty: 1, unitPrice: 102, itemId: "3" }],
-    total: 102,
-  },
-  {
-    id: "ORD-0954",
-    date: "9 Sep 2026",
-    status: "Completed",
-    party: "Hiruni N.",
-    lines: [{ title: "Analog wristwatch", qty: 1, unitPrice: 24, itemId: "14" }],
-    total: 24,
-  },
-];
-
-/** Demo orders that arrived for the seller / organizer. */
-export const seedSellerOrders: Order[] = [
-  {
-    id: "S-2201",
-    date: "15 Oct 2026",
-    status: "Placed",
-    party: "Nethmi K.",
-    eventId: "e2",
-    lines: [
-      { title: "Sports Meet t-shirt", qty: 1, unitPrice: 8.8, variant: "Teal · M · Waves" },
-      { title: "Sports Meet ticket", qty: 2, unitPrice: 3 },
-    ],
-    total: 14.8,
-  },
-  {
-    id: "S-2198",
-    date: "14 Oct 2026",
-    status: "Ready for pickup",
-    party: "Chamod S.",
-    lines: [{ title: "Desk lamp", qty: 1, unitPrice: 14 }],
-    total: 14,
-  },
-  {
-    id: "S-2190",
-    date: "11 Oct 2026",
-    status: "Completed",
-    party: "Anika D.",
-    eventId: "e1",
-    lines: [{ title: "Freshers Night bookmark", qty: 3, unitPrice: 2, variant: "Sunset" }],
-    total: 6,
   },
 ];

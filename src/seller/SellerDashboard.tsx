@@ -23,11 +23,27 @@ export function SellerDashboard({
   onCreateEvent: () => void;
   onOrders: () => void;
 }) {
-  const newOrders = orders.filter((o) => o.status === "Placed").length;
-  const revenue = orders.filter((o) => o.status !== "Cancelled").reduce((s, o) => s + o.total, 0);
-  const tickets = eventProducts.filter((p) => p.kind === "ticket").reduce((s, p) => s + (p.sold || 0), 0);
+  const safeOrders = orders || [];
+  const safeProducts = (products || []).filter(
+    (p, idx, arr) => p?.id && arr.findIndex((x) => x?.id === p.id) === idx,
+  );
+  const safeConversations = conversations || [];
+  const safeOffers = offers || [];
+  const safeName = (name || "Seller").trim() || "Seller";
+
+  const newOrders = safeOrders.filter((o) => {
+    const st = (o?.status || "").toLowerCase();
+    return st === "placed" || st === "new";
+  }).length;
+  const revenue = safeOrders
+    .filter((o) => {
+      const st = (o?.status || "").toLowerCase();
+      return st !== "cancelled" && st !== "canceled";
+    })
+    .reduce((s, o) => s + (Number(o?.total) || 0), 0);
+  const activeConversations = safeConversations.length;
   const stats = [
-    { label: "Products live", value: String(products.filter((p) => !p.soldOut).length), icon: "cube-outline", tint: colors.teal },
+    { label: "Products live", value: String(safeProducts.filter((p) => !p?.soldOut && p?.stock !== 0).length), icon: "cube-outline", tint: colors.teal },
     { label: "New orders", value: String(newOrders), icon: "notifications-outline", tint: colors.yellow },
     { label: "Revenue", value: money(Math.round(revenue * 100) / 100), icon: "cash-outline", tint: colors.pink },
     { label: "Tickets sold", value: String(tickets), icon: "ticket-outline", tint: colors.blue },
