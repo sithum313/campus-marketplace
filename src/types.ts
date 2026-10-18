@@ -91,6 +91,17 @@ export type Order = {
   /** buyer name (seller view) or seller name (buyer view) */
   party: string;
   eventId?: string;
+  buyerId?: string;
+  buyerName?: string;
+  buyerEmail?: string;
+  sellerId?: string;
+  meetupSpot?: string;
+  meetupTime?: string;
+  notes?: string;
+  promoCode?: string;
+  discount?: number;
+  createdAt?: any;
+  updatedAt?: any;
 };
 
 export type Message = { id: string; mine: boolean; text: string; at: number };
