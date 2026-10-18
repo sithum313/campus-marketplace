@@ -1,6 +1,6 @@
 import { colors } from "./theme";
 import { capColors, shirtColors, shirtSizes } from "./designs";
-import { CampusEvent, Conversation, Listing, Offer, Order, ProductKind } from "./types";
+import { CampusEvent, Listing, Offer, ProductKind } from "./types";
 
 export const categories = [
   "All items",
@@ -32,9 +32,6 @@ export const categoryTints: string[] = [
   colors.yellow,
   colors.blue,
 ];
-
-/** Product photo from Unsplash. If one cannot load, the app shows a colored icon tile instead. */
-const photo = (id: string) => `https://images.unsplash.com/${id}?auto=format&fit=crop&w=800&q=70`;
 
 const base = (
   id: string,
@@ -111,7 +108,6 @@ const eventProducts = (
   return [
     ev("ticket", "ticket", prices.ticket, {
       icon: "ticket-outline",
-      image: photo("photo-1540575467063-178a50c2df87"),
       condition: "Entry ticket",
       description: `Entry ticket for ${name}. Show the QR code at the gate.`,
       stock: 300,
@@ -119,7 +115,6 @@ const eventProducts = (
     }),
     ev("cap", "cap", prices.cap, {
       icon: "mci:hat-fedora",
-      image: photo("photo-1588850561407-ed78c282e89b"),
       condition: "New",
       description: `Official cap for ${name}. Adjustable strap.`,
       colors: capColors,
@@ -128,11 +123,11 @@ const eventProducts = (
     }),
     ev("tshirt", "t-shirt", prices.shirt, {
       icon: "mci:tshirt-crew-outline",
-      image: photo("photo-1521572163474-6864f9cf17ab"),
       condition: "New",
-      description: `Official t-shirt for ${name}. Pick a colour and size.`,
+      description: `Official t-shirt for ${name}. Pick a colour, size and print design.`,
       colors: shirtColors,
       sizes: shirtSizes,
+      designs: ["crew", "laugh", "sunset", "waves", "stars", "together"],
       stock: 150,
       sold: 48,
     }),
@@ -200,53 +195,43 @@ export const seedListings: Listing[] = [
     discountPercent: 10,
   },
   base("5", "Scientific calculator", 18, "Tech", "Nimal P.", "North Campus", {
-    image: photo("photo-1587145820266-a5951ee6f620"),
     icon: "calculator-outline",
     discountPercent: 25,
     popular: true,
   }),
   base("6", "Data structures notes bundle", 9, "Textbooks", "Dilini S.", "East Quad", {
-    image: photo("photo-1517842645767-c639042777db"),
     icon: "document-text-outline",
     discountPercent: 30,
   }),
   base("7", "Desk lamp", 14, "Furniture", "Kavindu W.", "West Village", {
-    image: photo("photo-1507473885765-e6ed057f782c"),
     icon: "bulb-outline",
     discountPercent: 20,
   }),
   base("8", "A4 notebook set (5 pack)", 7, "Stationery", "Ishara M.", "North Campus", {
-    image: photo("photo-1531346878377-a5be20888e57"),
     icon: "pencil-outline",
     discountPercent: 15,
     popular: true,
   }),
   base("9", "Badminton racket", 22, "Sports", "Tharindu J.", "University Ground", {
-    image: photo("photo-1626224583764-f87db24ac4ea"),
     icon: "tennisball-outline",
     discountPercent: 35,
   }),
   base("10", "Canvas backpack", 26, "Accessories", "Sachini L.", "East Quad", {
-    image: photo("photo-1553062407-98eeb64c6a62"),
     icon: "bag-handle-outline",
     popular: true,
   }),
   base("11", "Wireless mouse", 11, "Tech", "Pasindu H.", "North Campus", {
-    image: photo("photo-1527864550417-7fd91fc51a46"),
     icon: "hardware-chip-outline",
     discountPercent: 20,
   }),
   base("12", "Organic chemistry textbook", 30, "Textbooks", "Amaya F.", "West Village", {
-    image: photo("photo-1532012197267-da84d127e765"),
     icon: "book-outline",
   }),
   base("13", "Casual hoodie", 20, "Fashion", "Ruwan D.", "East Quad", {
-    image: photo("photo-1556821840-3a63f95609a7"),
     icon: "mci:tshirt-crew-outline",
     popular: true,
   }),
   base("14", "Analog wristwatch", 24, "Accessories", "Hiruni N.", "North Campus", {
-    image: photo("photo-1524592094714-0f0654e20314"),
     icon: "watch-outline",
   }),
   ...eventProducts("e1", "Freshers Night", "Student Union", { ticket: 5, cap: 6, shirt: 10, bookmark: 2 }),
@@ -537,4 +522,3 @@ export const seedConversations: Conversation[] = [
     ],
   },
 ];
-

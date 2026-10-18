@@ -53,14 +53,10 @@ export function MessagesPage({
   conversations: propConversations,
   onOpen,
   onBrowse,
-  isSeller,
-  currentUserId,
 }: {
   conversations: Conversation[];
   onOpen: (id: string) => void;
   onBrowse: () => void;
-  isSeller?: boolean;
-  currentUserId?: string;
 }) {
   const [conversations, setConversations] = useState<Conversation[]>(propConversations);
   const [search, setSearch] = useState("");
