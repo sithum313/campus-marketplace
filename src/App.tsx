@@ -77,6 +77,59 @@ async function registerUser(user: User) {
   );
 }
 
+const getStoredOnboarded = (): boolean => {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      return window.localStorage.getItem("campus_marketplace_onboarded") === "true";
+    }
+  } catch {}
+  return false;
+};
+
+const setStoredOnboarded = () => {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.setItem("campus_marketplace_onboarded", "true");
+    }
+  } catch {}
+};
+
+const getStoredOrders = (): Order[] => {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      const saved = window.localStorage.getItem("campus_marketplace_buyer_orders");
+      if (saved) return JSON.parse(saved);
+    }
+  } catch {}
+  return [];
+};
+
+const setStoredOrders = (list: Order[]) => {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.setItem("campus_marketplace_buyer_orders", JSON.stringify(list));
+    }
+  } catch {}
+};
+
+const getStoredSellerOrders = (): Order[] => {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      const saved = window.localStorage.getItem("campus_marketplace_seller_orders");
+      if (saved) return JSON.parse(saved);
+    }
+  } catch {}
+  return seedSellerOrders;
+};
+
+const setStoredSellerOrders = (list: Order[]) => {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.setItem("campus_marketplace_seller_orders", JSON.stringify(list));
+    }
+  } catch {}
+};
+
 const today = () =>
   new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 const clean = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -93,7 +146,7 @@ export default function App() {
   const [authOpen, setAuthOpen] = useState(false);
   const [authError, setAuthError] = useState("");
   const [profileReady, setProfileReady] = useState(false);
-  const [onboarded, setOnboarded] = useState(false);
+  const [onboarded, setOnboarded] = useState<boolean>(getStoredOnboarded);
   const [toast, setToast] = useState("");
 
   // marketplace data
@@ -758,6 +811,7 @@ export default function App() {
     return (
       <OnboardingPage
         onDone={() => {
+          setStoredOnboarded();
           setOnboarded(true);
           setAuthOpen(true);
         }}
