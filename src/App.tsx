@@ -77,6 +77,59 @@ async function registerUser(user: User) {
   );
 }
 
+const getStoredOnboarded = (): boolean => {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      return window.localStorage.getItem("campus_marketplace_onboarded") === "true";
+    }
+  } catch {}
+  return false;
+};
+
+const setStoredOnboarded = () => {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.setItem("campus_marketplace_onboarded", "true");
+    }
+  } catch {}
+};
+
+const getStoredOrders = (): Order[] => {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      const saved = window.localStorage.getItem("campus_marketplace_buyer_orders");
+      if (saved) return JSON.parse(saved);
+    }
+  } catch {}
+  return [];
+};
+
+const setStoredOrders = (list: Order[]) => {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.setItem("campus_marketplace_buyer_orders", JSON.stringify(list));
+    }
+  } catch {}
+};
+
+const getStoredSellerOrders = (): Order[] => {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      const saved = window.localStorage.getItem("campus_marketplace_seller_orders");
+      if (saved) return JSON.parse(saved);
+    }
+  } catch {}
+  return seedSellerOrders;
+};
+
+const setStoredSellerOrders = (list: Order[]) => {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.setItem("campus_marketplace_seller_orders", JSON.stringify(list));
+    }
+  } catch {}
+};
+
 const today = () =>
   new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 const clean = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -93,7 +146,7 @@ export default function App() {
   const [authOpen, setAuthOpen] = useState(false);
   const [authError, setAuthError] = useState("");
   const [profileReady, setProfileReady] = useState(false);
-  const [onboarded, setOnboarded] = useState(false);
+  const [onboarded, setOnboarded] = useState<boolean>(getStoredOnboarded);
   const [toast, setToast] = useState("");
 
   // marketplace data
@@ -493,8 +546,6 @@ export default function App() {
       return next;
     });
   };
-  const cancelOrder = (id: string) =>
-    setOrders((o) => o.map((x) => (x.id === id ? { ...x, status: "Cancelled" } : x)));
 
   const openChat = (item: Listing) => {
     if (needsSignIn) return setAuthOpen(true);
@@ -518,77 +569,6 @@ export default function App() {
           : c,
       ),
     );
-
-  /* ---------- seller actions ---------- */
-
-  const patchListing = async (id: string, patch: Partial<Listing>) => {
-    if (db && cloudItems.some((i) => i.id === id)) {
-      await updateDoc(doc(db, "listings", id), clean(patch));
-    } else if (localItems.some((i) => i.id === id)) {
-      setLocalItems((list) => list.map((i) => (i.id === id ? { ...i, ...patch } : i)));
-    } else {
-      setEdits((current) => ({ ...current, [id]: { ...current[id], ...patch } }));
-    }
-  };
-  const saveProduct = async (draft: ProductDraft, id?: string) => {
-    if (needsSignIn) return setAuthOpen(true);
-    try {
-      const event = events.find((e) => e.id === draft.eventId);
-      const data = { ...draft, seller: event?.organizer || ownerName, sellerId: ownerId };
-      if (id) {
-        await patchListing(id, clean(data));
-        flash("Changes saved");
-      } else if (db && user && !draft.eventId) {
-        await addDoc(collection(db, "listings"), { ...clean(data), createdAt: serverTimestamp() });
-        flash("Product published");
-      } else {
-        setLocalItems((list) => [{ id: `local-${Date.now()}`, ...data }, ...list]);
-        flash(draft.eventId ? "Added to your event" : "Product published");
-      }
-    } catch (error) {
-      flash(error instanceof Error ? error.message : "Could not save the product");
-    }
-  };
-  const deleteProduct = async (id: string) => {
-    try {
-      if (db && cloudItems.some((i) => i.id === id)) await deleteDoc(doc(db, "listings", id));
-      setLocalItems((list) => list.filter((i) => i.id !== id));
-      setRemoved((r) => [...r, id]);
-      flash("Removed");
-    } catch (error) {
-      flash(error instanceof Error ? error.message : "Could not delete");
-    }
-  };
-  const toggleSoldOut = (id: string) => {
-    const item = items.find((i) => i.id === id);
-    if (!item) return;
-    const out = item.soldOut || item.stock === 0;
-    patchListing(id, out ? { soldOut: false, stock: item.stock === 0 ? 1 : item.stock } : { soldOut: true }).catch(
-      (e) => flash(e instanceof Error ? e.message : "Could not update"),
-    );
-  };
-  const saveEvent = (data: Omit<CampusEvent, "id">, id?: string) => {
-    const eventId = id || `ev-${Date.now()}`;
-    setEvents((list) =>
-      id ? list.map((e) => (e.id === id ? { ...e, ...data } : e)) : [{ id: eventId, ...data }, ...list],
-    );
-    flash(id ? "Event updated" : "Event created");
-    return eventId;
-  };
-  const deleteEvent = (id: string) => {
-    const productIds = items.filter((i) => i.eventId === id).map((i) => i.id);
-    setEvents((list) => list.filter((e) => e.id !== id));
-    setOffers((list) => list.filter((o) => o.eventId !== id));
-    setLocalItems((list) => list.filter((i) => i.eventId !== id));
-    setRemoved((r) => [...r, ...productIds]);
-    flash("Event deleted");
-  };
-  const saveOffer = (offer: Omit<Offer, "id">) => {
-    setOffers((list) => [{ id: `o-${Date.now()}`, ...offer }, ...list]);
-    flash("Offer published to buyers");
-  };
-  const setOrderStatus = (id: string, status: OrderStatus) =>
-    setSellerOrders((o) => o.map((x) => (x.id === id ? { ...x, status } : x)));
 
   /* ---------- auth (unchanged) ---------- */
 
@@ -831,6 +811,7 @@ export default function App() {
     return (
       <OnboardingPage
         onDone={() => {
+          setStoredOnboarded();
           setOnboarded(true);
           setAuthOpen(true);
         }}
@@ -907,11 +888,19 @@ export default function App() {
             />
           )}
           {tab === "Messages" && subPage === "chat" && activeChat && (
-            <ChatPage conversation={activeChat} onSend={sendMessage} onBack={() => setSubPage(null)} />
+            <ChatPage
+              conversation={activeChat}
+              onSend={sendMessage}
+              onBack={() => setSubPage(null)}
+              currentUserId={user?.uid}
+              isSeller={mode === "seller"}
+            />
           )}
           {tab === "Messages" && !(subPage === "chat" && activeChat) && (
             <MessagesPage
               conversations={conversations}
+              currentUserId={user?.uid}
+              isSeller={mode === "seller"}
               onOpen={(id) => {
                 setChatId(id);
                 setSubPage("chat");
