@@ -1,5 +1,8 @@
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { colors, listPriceOf, money } from "../theme";
 import { Listing } from "../types";
+import { AppIcon } from "./AppIcon";
+import { ProductImage } from "./ProductImage";
 
 export function ListingCard({
   item,
@@ -15,28 +18,39 @@ export function ListingCard({
   return (
     <Pressable style={styles.card} onPress={onOpen}>
       <View style={styles.photo}>
-        <Image source={{ uri: item.image }} style={styles.image} />
+        <ProductImage item={item} iconSize={44} />
+        {item.discountPercent ? (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>-{item.discountPercent}%</Text>
+          </View>
+        ) : null}
         <Pressable
           accessibilityLabel={saved ? "Remove saved item" : "Save item"}
           style={styles.save}
           onPress={onSave}
         >
-          <Text style={[styles.heart, saved && styles.red]}>
-            {saved ? "♥" : "♡"}
-          </Text>
+          <AppIcon
+            name={saved ? "heart" : "heart-outline"}
+            size={18}
+            color={saved ? colors.red : colors.ink}
+          />
         </Pressable>
       </View>
       <View style={styles.body}>
-        <View style={styles.row}>
-          <Text style={styles.title} numberOfLines={2}>
-            {item.title}
-          </Text>
-          <Text style={styles.price}>${item.price}</Text>
+        <Text style={styles.title} numberOfLines={2}>
+          {item.title}
+        </Text>
+        <View style={styles.priceRow}>
+          <Text style={styles.price}>{money(item.price)}</Text>
+          {item.discountPercent ? (
+            <Text style={styles.old}>
+              {money(listPriceOf(item))}
+            </Text>
+          ) : null}
         </View>
-        <Text style={styles.muted}>
+        <Text style={styles.muted} numberOfLines={1}>
           {item.condition} · {item.campus}
         </Text>
-        <Text style={styles.tiny}>Listed by {item.seller}</Text>
       </View>
     </Pressable>
   );
@@ -45,18 +59,27 @@ export function ListingCard({
 const styles = StyleSheet.create({
   card: {
     flex: 1,
-    backgroundColor: "#FFF",
-    borderRadius: 16,
+    backgroundColor: colors.card,
+    borderRadius: 18,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "#E9ECE6",
+    borderColor: colors.line,
   },
-  photo: { height: 148, backgroundColor: "#E5ECE5" },
-  image: { width: "100%", height: "100%" },
-  save: {
+  photo: { height: 130, backgroundColor: colors.blue },
+  badge: {
     position: "absolute",
     top: 10,
-    right: 10,
+    left: 10,
+    backgroundColor: colors.ink,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  badgeText: { color: "#FFF", fontSize: 11, fontWeight: "800" },
+  save: {
+    position: "absolute",
+    top: 8,
+    right: 8,
     width: 32,
     height: 32,
     borderRadius: 16,
@@ -64,19 +87,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  heart: { color: "#365B4C", fontSize: 21 },
-  red: { color: "#C3535B" },
   body: { padding: 12 },
-  row: { flexDirection: "row", justifyContent: "space-between", gap: 5 },
   title: {
-    flex: 1,
     minHeight: 34,
-    color: "#1B3A33",
+    color: colors.ink,
     fontSize: 13,
     lineHeight: 17,
     fontWeight: "700",
   },
-  price: { color: "#1C7057", fontSize: 14, fontWeight: "800" },
-  muted: { color: "#87918C", fontSize: 12 },
-  tiny: { color: "#A0AAA4", fontSize: 10, marginTop: 5 },
+  priceRow: { flexDirection: "row", alignItems: "baseline", gap: 6, marginTop: 4 },
+  price: { color: colors.ink, fontSize: 15, fontWeight: "800" },
+  old: { color: colors.muted, fontSize: 12, textDecorationLine: "line-through" },
+  muted: { color: colors.muted, fontSize: 11, marginTop: 4 },
 });

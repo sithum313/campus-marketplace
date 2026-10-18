@@ -2,48 +2,63 @@ import { StatusBar } from "expo-status-bar";
 import {
   GoogleAuthProvider,
   browserLocalPersistence,
+  createUserWithEmailAndPassword,
   getRedirectResult,
   onAuthStateChanged,
   setPersistence,
-  signInAnonymously,
+  signInWithEmailAndPassword,
   signInWithPopup,
   signInWithRedirect,
   signOut,
+  updateProfile,
   User,
 } from "firebase/auth";
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
   setDoc,
+  updateDoc,
 } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
-import {
-  Alert,
-  Image,
-  Modal,
-  Platform,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
-import { EmptyState } from "./components/EmptyState";
-import { ExplorePage } from "./pages/ExplorePage";
-import { MessagesPage } from "./pages/MessagesPage";
-import { MyListingsPage } from "./pages/MyListingsPage";
-import { ProfilePage } from "./pages/ProfilePage";
-import { SavedPage } from "./pages/SavedPage";
-import { seedListings } from "./data";
+import { Alert, Modal, Platform, SafeAreaView, StyleSheet, Text, View } from "react-native";
+import { BottomTabs, buyerTabs } from "./components/BottomTabs";
+import { ListingModal } from "./components/ListingModal";
+import { ModeToggle } from "./components/ModeToggle";
+import { seedEvents, seedListings, seedOffers, seedOrders, seedSellerOrders } from "./data";
 import { auth, db, firebaseConfigured } from "./firebase";
-import { Listing, Tab } from "./types";
+import { lineKeyOf, priceCart, variantLabel } from "./lib/cart";
+import { applyFilters, defaultFilters } from "./lib/filter";
+import { AllItemsPage } from "./pages/AllItemsPage";
+import { AuthPage, SignUpData } from "./pages/AuthPage";
+import { CartPage } from "./pages/CartPage";
+import { ChatPage } from "./pages/ChatPage";
+import { HomePage } from "./pages/HomePage";
+import { MessagesPage } from "./pages/MessagesPage";
+import { OnboardingPage } from "./pages/OnboardingPage";
+import { ProfilePage, ProfileTab } from "./pages/ProfilePage";
+import { DiscountsPage, EventsPage } from "./pages/SubPages";
+import { ProductDraft } from "./seller/ProductForm";
+import { SellerApp } from "./seller/SellerApp";
+import { colors } from "./theme";
+import {
+  CampusEvent,
+  CartLine,
+  Conversation,
+  Filters,
+  Listing,
+  Mode,
+  Offer,
+  Order,
+  OrderStatus,
+  SubPage,
+  Tab,
+} from "./types";
 
 async function registerUser(user: User) {
   if (!db) return;
@@ -62,18 +77,50 @@ async function registerUser(user: User) {
   );
 }
 
+const today = () =>
+  new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+const clean = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
+
 export default function App() {
-  const [tab, setTab] = useState<Tab>("Explore");
-  const [items, setItems] = useState(seedListings);
+  const [mode, setMode] = useState<Mode>("buyer");
+  const [tab, setTab] = useState<Tab>("Home");
+  const [subPage, setSubPage] = useState<SubPage>(null);
   const [queryText, setQueryText] = useState("");
-  const [category, setCategory] = useState("All items");
+  const [filters, setFilters] = useState<Filters>(defaultFilters);
   const [savedIds, setSavedIds] = useState<string[]>([]);
   const [selected, setSelected] = useState<Listing | null>(null);
   const [user, setUser] = useState<User | null>(auth?.currentUser || null);
   const [authOpen, setAuthOpen] = useState(false);
-  const [sellOpen, setSellOpen] = useState(false);
   const [authError, setAuthError] = useState("");
   const [profileReady, setProfileReady] = useState(false);
+  const [onboarded, setOnboarded] = useState(false);
+  const [toast, setToast] = useState("");
+
+  // marketplace data
+  const [cloudItems, setCloudItems] = useState<Listing[]>([]);
+  const [localItems, setLocalItems] = useState<Listing[]>([]);
+  const [edits, setEdits] = useState<Record<string, Partial<Listing>>>({});
+  const [removed, setRemoved] = useState<string[]>([]);
+  const [events, setEvents] = useState<CampusEvent[]>(seedEvents);
+  const [offers, setOffers] = useState<Offer[]>(seedOffers);
+
+  // buyer data
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [orders, setOrders] = useState<Order[]>(firebaseConfigured ? [] : seedOrders);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [chatId, setChatId] = useState<string | null>(null);
+  const [profileTab, setProfileTab] = useState<{ tab: ProfileTab; nonce: number }>({ tab: "ongoing", nonce: 0 });
+
+  // seller data
+  const [sellerOrders, setSellerOrders] = useState<Order[]>(seedSellerOrders);
+
+  const ownerId = user?.uid || "demo-seller";
+  const ownerName = user?.displayName || user?.email?.split("@")[0] || "You";
+  const needsSignIn = firebaseConfigured && !user;
+  const flash = (message: string) => {
+    setToast(message);
+    setTimeout(() => setToast((t) => (t === message ? "" : t)), 2600);
+  };
 
   useEffect(() => {
     const firebaseAuth = auth;
@@ -84,16 +131,12 @@ export default function App() {
         registerUser(nextUser)
           .then(() => setProfileReady(true))
           .catch((error) =>
-            setAuthError(
-              error instanceof Error
-                ? error.message
-                : "Could not create profile.",
-            ),
+            setAuthError(error instanceof Error ? error.message : "Could not create profile."),
           );
       else setProfileReady(false);
     };
     let unsubscribe: () => void = () => undefined;
-    setPersistence(firebaseAuth, browserLocalPersistence)
+    (Platform.OS === "web" ? setPersistence(firebaseAuth, browserLocalPersistence) : Promise.resolve())
       .then(() => {
         unsubscribe = onAuthStateChanged(firebaseAuth, handleUser);
         return getRedirectResult(firebaseAuth);
@@ -102,54 +145,299 @@ export default function App() {
         if (result?.user) handleUser(result.user);
       })
       .catch((error) =>
-        setAuthError(
-          error instanceof Error
-            ? error.message
-            : "Google sign-in could not be completed.",
-        ),
+        setAuthError(error instanceof Error ? error.message : "Google sign-in could not be completed."),
       );
     return () => unsubscribe();
   }, []);
 
   useEffect(() => {
     if (!db) return;
-    const listingsQuery = query(
-      collection(db, "listings"),
-      orderBy("createdAt", "desc"),
-    );
+    const listingsQuery = query(collection(db, "listings"), orderBy("createdAt", "desc"));
     return onSnapshot(
       listingsQuery,
       (snapshot) =>
-        setItems(
-          snapshot.empty
-            ? seedListings
-            : snapshot.docs.map(
-                (entry) => ({ id: entry.id, ...entry.data() }) as Listing,
-              ),
-        ),
-      () => setItems(seedListings),
+        setCloudItems(snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }) as Listing)),
+      () => setCloudItems([]),
     );
   }, []);
 
-  const filteredItems = useMemo(
+  // Favorites are stored per authenticated user in Firestore.
+  useEffect(() => {
+    if (!db || !user) { setSavedIds([]); return; }
+    return onSnapshot(collection(db, "users", user.uid, "saved"),
+      (snapshot) => setSavedIds(snapshot.docs.map((entry) => entry.id)),
+      (error) => flash(`Could not load saved items: ${error.message}`));
+  }, [user?.uid]);
+
+  /** Every listing the buyer can see: your new ones, cloud ones, then the demo catalogue. */
+  const items = useMemo(
     () =>
-      items.filter(
-        (item) =>
-          (category === "All items" || item.category === category) &&
-          item.title.toLowerCase().includes(queryText.toLowerCase()),
-      ),
-    [category, items, queryText],
+      [...localItems, ...cloudItems, ...seedListings]
+        .filter((item) => !removed.includes(item.id))
+        .map((item) => (edits[item.id] ? { ...item, ...edits[item.id] } : item)),
+    [localItems, cloudItems, edits, removed],
   );
-  const myListings = useMemo(
-    () => (user ? items.filter((item) => item.sellerId === user.uid) : []),
-    [items, user],
+  const eventProducts = useMemo(() => items.filter((i) => i.eventId), [items]);
+  const myProducts = useMemo(
+    () => items.filter((i) => i.sellerId === ownerId && !i.eventId),
+    [items, ownerId],
   );
-  const toggleSaved = (id: string) =>
-    setSavedIds((current) =>
-      current.includes(id)
-        ? current.filter((value) => value !== id)
-        : [...current, id],
+  const visibleItems = useMemo(() => items.filter((i) => !i.soldOut), [items]);
+  const filteredItems = useMemo(
+    () => applyFilters(visibleItems, queryText, filters),
+    [visibleItems, queryText, filters],
+  );
+  const cartUnits = cart.reduce((sum, line) => sum + line.qty, 0);
+  const cartTotal = priceCart(cart, items, offers).total;
+
+  /* ---------- buyer actions ---------- */
+
+  const toggleSaved = async (id: string) => {
+    if (needsSignIn) { setAuthOpen(true); return; }
+    if (db && user) {
+      try {
+        const favorite = doc(db, "users", user.uid, "saved", id);
+        if (savedIds.includes(id)) await deleteDoc(favorite);
+        else await setDoc(favorite, { listingId: id, savedAt: serverTimestamp() });
+      } catch (error) { flash(error instanceof Error ? error.message : "Could not update favorites"); }
+      return;
+    }
+    setSavedIds((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
+  };
+  const addToCart = (input: Omit<CartLine, "key">) => {
+    const item = items.find((i) => i.id === input.itemId);
+    if (!item || item.soldOut || item.stock === 0) { flash("This item is unavailable"); return; }
+    if (!Number.isInteger(input.qty) || input.qty < 1) return;
+    const existing = cart.filter((l) => l.itemId === input.itemId).reduce((n, l) => n + l.qty, 0);
+    if (item.stock !== undefined && existing + input.qty > item.stock) { flash("Not enough stock available"); return; }
+    const key = lineKeyOf(input.itemId, input);
+    setCart((current) =>
+      current.some((l) => l.key === key)
+        ? current.map((l) => (l.key === key ? { ...l, qty: l.qty + input.qty } : l))
+        : [...current, { ...input, key }],
     );
+  };
+  const setLineQty = (key: string, qty: number) => {
+    const line = cart.find((l) => l.key === key);
+    if (!line || !Number.isInteger(qty) || qty < 1) return;
+    const item = items.find((i) => i.id === line.itemId);
+    const otherQty = cart.filter((l) => l.itemId === line.itemId && l.key !== key).reduce((n, l) => n + l.qty, 0);
+    if (item?.stock !== undefined && qty + otherQty > item.stock) { flash("Not enough stock available"); return; }
+    setCart((current) => current.map((l) => l.key === key ? { ...l, qty } : l));
+  };
+  const removeLine = (key: string) => setCart((current) => current.filter((l) => l.key !== key));
+
+  const goTab = (next: Tab) => {
+    if (next === "Search") setFilters((f) => ({ ...f, category: "All items" }));
+    setSubPage(null);
+    setTab(next);
+  };
+  const openCategory = (name: string) => {
+    setFilters((f) => ({ ...f, category: name }));
+    setSubPage(null);
+    setTab("Search");
+  };
+
+  const checkout = () => {
+    if (needsSignIn) return setAuthOpen(true);
+    const { rows, total } = priceCart(cart, items, offers);
+    if (!rows.length) return;
+    if (rows.length !== cart.length || rows.some((r) => r.item.soldOut || (r.item.stock !== undefined && cart.filter((l) => l.itemId === r.item.id).reduce((n, l) => n + l.qty, 0) > r.item.stock!))) {
+      flash("Some cart items are unavailable or exceed stock. Please review your cart.");
+      return;
+    }
+    const sellers = Array.from(new Set(rows.map((r) => r.item.seller)));
+    const eventIds = Array.from(new Set(rows.map((r) => r.item.eventId)));
+    const id = `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
+    setOrders((o) => [
+      {
+        id,
+        date: today(),
+        status: "Placed",
+        party: sellers.length > 2 ? `${sellers.length} sellers` : sellers.join(" & "),
+        eventId: eventIds.length === 1 ? eventIds[0] : undefined,
+        total,
+        lines: rows.map((r) => ({
+          title: r.item.title,
+          qty: r.line.qty,
+          unitPrice: r.item.price,
+          variant: variantLabel(r.line) || undefined,
+          itemId: r.item.id,
+        })),
+      },
+      ...o,
+    ]);
+    // keep local stock / sold counts in step
+    setEdits((current) => {
+      const next = { ...current };
+      for (const r of rows) {
+        const stock = r.item.stock === undefined ? undefined : Math.max(0, r.item.stock - r.line.qty);
+        next[r.item.id] = {
+          ...next[r.item.id],
+          sold: (r.item.sold || 0) + r.line.qty,
+          ...(stock === undefined ? {} : { stock, soldOut: stock === 0 }),
+        };
+      }
+      return next;
+    });
+    // demo: orders on your own products show up in seller mode too
+    const mine = rows.filter((r) => r.item.sellerId === ownerId);
+    if (mine.length)
+      setSellerOrders((o) => [
+        {
+          id: `S-${Math.floor(1000 + Math.random() * 9000)}`,
+          date: today(),
+          status: "Placed",
+          party: ownerName,
+          total: Math.round(mine.reduce((s, r) => s + r.gross - r.discount, 0) * 100) / 100,
+          lines: mine.map((r) => ({
+            title: r.item.title,
+            qty: r.line.qty,
+            unitPrice: r.item.price,
+            variant: variantLabel(r.line) || undefined,
+          })),
+        },
+        ...o,
+      ]);
+    setCart([]);
+    setProfileTab((p) => ({ tab: "ongoing", nonce: p.nonce + 1 }));
+    goTab("Profile");
+    flash(`Order ${id} placed`);
+  };
+  const cancelOrder = (id: string) =>
+    setOrders((o) => o.map((x) => (x.id === id ? { ...x, status: "Cancelled" } : x)));
+
+  const openChat = (item: Listing) => {
+    if (needsSignIn) return setAuthOpen(true);
+    if (item.sellerId && item.sellerId === user?.uid) { flash("You cannot message yourself"); return; }
+    const id = `c-${item.id}`;
+    setConversations((list) =>
+      list.some((c) => c.id === id)
+        ? list
+        : [{ id, itemId: item.id, itemTitle: item.title, seller: item.seller, messages: [] }, ...list],
+    );
+    setChatId(id);
+    setSelected(null);
+    setMode("buyer");
+    setSubPage("chat");
+    setTab("Messages");
+  };
+  const sendMessage = (text: string) => {
+    if (!text.trim()) return;
+    setConversations((list) =>
+      list.map((c) =>
+        c.id === chatId
+          ? { ...c, messages: [...c.messages, { id: String(Date.now()), mine: true, text, at: Date.now() }] }
+          : c,
+      ),
+    );
+  };
+
+  /* ---------- seller actions ---------- */
+
+  const patchListing = async (id: string, patch: Partial<Listing>) => {
+    if (db && cloudItems.some((i) => i.id === id)) {
+      await updateDoc(doc(db, "listings", id), clean(patch));
+    } else if (localItems.some((i) => i.id === id)) {
+      setLocalItems((list) => list.map((i) => (i.id === id ? { ...i, ...patch } : i)));
+    } else {
+      setEdits((current) => ({ ...current, [id]: { ...current[id], ...patch } }));
+    }
+  };
+  const saveProduct = async (draft: ProductDraft, id?: string) => {
+    if (needsSignIn) return setAuthOpen(true);
+    try {
+      const event = events.find((e) => e.id === draft.eventId);
+      if (!draft.title.trim() || !Number.isFinite(draft.price) || draft.price <= 0 || (draft.stock !== undefined && (!Number.isInteger(draft.stock) || draft.stock < 0))) {
+        flash("Please enter a valid name, price and stock quantity"); return;
+      }
+      if (id && items.find((i) => i.id === id)?.sellerId !== ownerId) { flash("You can only edit your own products"); return; }
+      const data = { ...draft, seller: event?.organizer || ownerName, sellerId: ownerId };
+      if (id) {
+        await patchListing(id, clean(data));
+        flash("Changes saved");
+      } else if (db && user) {
+        await addDoc(collection(db, "listings"), { ...clean(data), createdAt: serverTimestamp() });
+        flash("Product published");
+      } else {
+        setLocalItems((list) => [{ id: `local-${Date.now()}`, ...data }, ...list]);
+        flash(draft.eventId ? "Added to your event" : "Product published");
+      }
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "Could not save the product");
+    }
+  };
+  const deleteProduct = async (id: string) => {
+    if (items.find((i) => i.id === id)?.sellerId !== ownerId) { flash("You can only delete your own products"); return; }
+    try {
+      if (db && cloudItems.some((i) => i.id === id)) await deleteDoc(doc(db, "listings", id));
+      setLocalItems((list) => list.filter((i) => i.id !== id));
+      setRemoved((r) => [...r, id]);
+      flash("Removed");
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "Could not delete");
+    }
+  };
+  const toggleSoldOut = (id: string) => {
+    const item = items.find((i) => i.id === id);
+    if (!item || item.sellerId !== ownerId) return;
+    const out = item.soldOut || item.stock === 0;
+    patchListing(id, out ? { soldOut: false, stock: item.stock === 0 ? 1 : item.stock } : { soldOut: true }).catch(
+      (e) => flash(e instanceof Error ? e.message : "Could not update"),
+    );
+  };
+  const saveEvent = (data: Omit<CampusEvent, "id">, id?: string) => {
+    const eventId = id || `ev-${Date.now()}`;
+    setEvents((list) =>
+      id ? list.map((e) => (e.id === id ? { ...e, ...data } : e)) : [{ id: eventId, ...data }, ...list],
+    );
+    flash(id ? "Event updated" : "Event created");
+    return eventId;
+  };
+  const deleteEvent = (id: string) => {
+    const productIds = items.filter((i) => i.eventId === id).map((i) => i.id);
+    setEvents((list) => list.filter((e) => e.id !== id));
+    setOffers((list) => list.filter((o) => o.eventId !== id));
+    setLocalItems((list) => list.filter((i) => i.eventId !== id));
+    setRemoved((r) => [...r, ...productIds]);
+    flash("Event deleted");
+  };
+  const saveOffer = (offer: Omit<Offer, "id">) => {
+    setOffers((list) => [{ id: `o-${Date.now()}`, ...offer }, ...list]);
+    flash("Offer published to buyers");
+  };
+  const setOrderStatus = (id: string, status: OrderStatus) =>
+    setSellerOrders((o) => o.map((x) => (x.id === id ? { ...x, status } : x)));
+
+  /* ---------- auth (unchanged) ---------- */
+
+  const signInWithEmail = async (email: string, password: string) => {
+    if (!auth) throw new Error("Firebase is not configured yet.");
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    setUser(cred.user);
+    setAuthOpen(false);
+  };
+  const signUpWithEmail = async ({ name, email, phone, password }: SignUpData) => {
+    if (!auth) throw new Error("Firebase is not configured yet.");
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
+    await updateProfile(cred.user, { displayName: name });
+    if (db)
+      await setDoc(
+        doc(db, "users", cred.user.uid),
+        {
+          uid: cred.user.uid,
+          displayName: name,
+          email,
+          phone,
+          campus: "North Campus",
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      );
+    setUser(auth.currentUser);
+    setProfileReady(true);
+    setAuthOpen(false);
+  };
   const signInWithGoogle = async () => {
     if (!auth) return;
     setAuthError("");
@@ -162,16 +450,11 @@ export default function App() {
         setProfileReady(true);
         setAuthOpen(false);
       } else {
-        await signInAnonymously(auth);
-        setAuthOpen(false);
+        throw new Error("Google sign-in is available on the web version. Please use email sign-in on mobile.");
       }
     } catch (error) {
-      const code =
-        error instanceof Error ? error.message : "Google sign-in failed.";
-      if (
-        Platform.OS === "web" &&
-        /popup|cancelled-popup-request/i.test(code)
-      ) {
+      const code = error instanceof Error ? error.message : "Google sign-in failed.";
+      if (Platform.OS === "web" && /popup|cancelled-popup-request/i.test(code)) {
         await signInWithRedirect(auth, new GoogleAuthProvider());
         return;
       }
@@ -179,469 +462,187 @@ export default function App() {
       Alert.alert("Google sign-in failed", code);
     }
   };
-  const publish = async (
-    title: string,
-    price: string,
-    listingCategory: string,
-  ) => {
-    if (!user) {
-      setSellOpen(false);
-      setAuthOpen(true);
-      return;
-    }
-    await addDoc(collection(db!, "listings"), {
-      title,
-      price: Number(price),
-      category: listingCategory,
-      seller: user.displayName || user.email || "You",
-      sellerId: user.uid,
-      campus: "North Campus",
-      condition: "Good condition",
-      image: seedListings[0].image,
-      description: "New listing from a campus seller.",
-      createdAt: serverTimestamp(),
-    });
-    setSellOpen(false);
-  };
-  const contactSeller = () => {
-    if (!user) {
-      setAuthOpen(true);
-      return;
-    }
-    setSelected(null);
-    setTab("Messages");
-  };
+
+  if (!onboarded) {
+    return (
+      <OnboardingPage
+        onDone={() => {
+          setOnboarded(true);
+          setAuthOpen(true);
+        }}
+      />
+    );
+  }
+
+  const activeChat = conversations.find((c) => c.id === chatId);
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
-      {tab === "Explore" && (
-        <ExplorePage
-          items={filteredItems}
-          query={queryText}
-          category={category}
-          savedIds={savedIds}
-          onQueryChange={setQueryText}
-          onCategoryChange={setCategory}
-          onSave={toggleSaved}
-          onOpen={setSelected}
-          onProfile={() => setTab("Profile")}
+
+      {mode === "seller" ? (
+        <SellerApp
+          ownerName={ownerName}
+          campus="North Campus"
+          products={myProducts}
+          events={events}
+          eventProducts={eventProducts}
+          offers={offers}
+          orders={sellerOrders}
+          onSaveProduct={saveProduct}
+          onDeleteProduct={deleteProduct}
+          onToggleSoldOut={toggleSoldOut}
+          onSaveEvent={saveEvent}
+          onDeleteEvent={deleteEvent}
+          onSaveOffer={saveOffer}
+          onDeleteOffer={(id) => setOffers((list) => list.filter((o) => o.id !== id))}
+          onOrderStatus={setOrderStatus}
         />
+      ) : (
+        <>
+          {tab === "Home" && subPage === "discounts" && (
+            <DiscountsPage items={visibleItems} onOpen={setSelected} onBack={() => setSubPage(null)} />
+          )}
+          {tab === "Home" && subPage === "events" && (
+            <EventsPage
+              items={visibleItems}
+              events={events}
+              offers={offers}
+              onOpen={setSelected}
+              onBack={() => setSubPage(null)}
+            />
+          )}
+          {tab === "Home" && subPage === null && (
+            <HomePage
+              items={visibleItems}
+              events={events}
+              offers={offers}
+              query={queryText}
+              savedIds={savedIds}
+              onQueryChange={setQueryText}
+              onSearch={() => goTab("Search")}
+              onOpen={setSelected}
+              onSave={toggleSaved}
+              onCategory={openCategory}
+              onSeeDiscounts={() => setSubPage("discounts")}
+              onSeeEvents={() => setSubPage("events")}
+              onSeeAll={() => goTab("Search")}
+            />
+          )}
+          {tab === "Search" && (
+            <AllItemsPage
+              items={filteredItems}
+              allItems={visibleItems}
+              query={queryText}
+              filters={filters}
+              savedIds={savedIds}
+              onQueryChange={setQueryText}
+              onFiltersChange={setFilters}
+              onSave={toggleSaved}
+              onOpen={setSelected}
+            />
+          )}
+          {tab === "Messages" && subPage === "chat" && activeChat && (
+            <ChatPage conversation={activeChat} onSend={sendMessage} onBack={() => setSubPage(null)} />
+          )}
+          {tab === "Messages" && !(subPage === "chat" && activeChat) && (
+            <MessagesPage
+              conversations={conversations}
+              onOpen={(id) => {
+                setChatId(id);
+                setSubPage("chat");
+              }}
+              onBrowse={() => goTab("Search")}
+            />
+          )}
+          {tab === "Cart" && (
+            <CartPage
+              lines={cart}
+              items={items}
+              offers={offers}
+              onQty={setLineQty}
+              onRemove={removeLine}
+              onOpen={setSelected}
+              onBrowse={() => goTab("Search")}
+              onCheckout={checkout}
+            />
+          )}
+          {tab === "Profile" && (
+            <ProfilePage
+              key={profileTab.nonce}
+              user={user}
+              orders={orders}
+              saved={items.filter((item) => savedIds.includes(item.id))}
+              cartCount={cartUnits}
+              cartTotal={cartTotal}
+              initialTab={profileTab.tab}
+              firebaseConfigured={firebaseConfigured}
+              profileReady={profileReady}
+              error={authError}
+              onOpen={setSelected}
+              onSave={toggleSaved}
+              onCart={() => goTab("Cart")}
+              onBrowse={() => goTab("Search")}
+              onCancelOrder={cancelOrder}
+              onSignIn={() => setAuthOpen(true)}
+              onSignOut={() => auth && signOut(auth)}
+            />
+          )}
+          {!(tab === "Messages" && subPage === "chat") && (
+            <BottomTabs
+              tabs={buyerTabs.map((t) => (t.key === "Cart" ? { ...t, badge: cartUnits } : t))}
+              current={tab}
+              onChange={(key) => goTab(key as Tab)}
+            />
+          )}
+        </>
       )}
-      {tab === "Saved" && (
-        <SavedPage
-          items={items.filter((item) => savedIds.includes(item.id))}
-          onSave={toggleSaved}
-          onOpen={setSelected}
-        />
-      )}
-      {tab === "Messages" && (
-        <MessagesPage onBrowse={() => setTab("Explore")} />
-      )}
-      {tab === "MyListings" && (
-        <MyListingsPage
-          items={myListings}
-          onOpen={setSelected}
-          onSell={() => setSellOpen(true)}
-        />
-      )}
-      {tab === "Profile" && (
-        <ProfilePage
-          user={user}
-          savedCount={savedIds.length}
-          listingCount={myListings.length}
-          firebaseConfigured={firebaseConfigured}
-          profileReady={profileReady}
-          error={authError}
-          onMyListings={() => (user ? setTab("MyListings") : setAuthOpen(true))}
-          onSaved={() => setTab("Saved")}
-          onSignIn={() => setAuthOpen(true)}
-          onSignOut={() => auth && signOut(auth)}
-        />
-      )}
-      <BottomNav
-        tab={tab}
-        savedCount={savedIds.length}
-        onChange={setTab}
-        onSell={() => setSellOpen(true)}
+
+      <ModeToggle
+        mode={mode}
+        onChange={(next) => {
+          setSelected(null);
+          setMode(next);
+        }}
       />
+
+      {toast ? (
+        <View pointerEvents="none" style={styles.toastWrap}>
+          <View style={styles.toast}>
+            <Text style={styles.toastText}>{toast}</Text>
+          </View>
+        </View>
+      ) : null}
+
       <ListingModal
         item={selected}
-        user={user}
+        saved={selected ? savedIds.includes(selected.id) : false}
+        offers={offers}
+        signedIn={!needsSignIn}
+        onToggleSave={() => selected && toggleSaved(selected.id)}
+        onAdd={addToCart}
+        onChat={() => selected && openChat(selected)}
+        onViewCart={() => {
+          setSelected(null);
+          goTab("Cart");
+        }}
         onClose={() => setSelected(null)}
-        onContact={contactSeller}
       />
-      <AuthModal
-        visible={authOpen}
-        onClose={() => setAuthOpen(false)}
-        onSignIn={signInWithGoogle}
-        error={authError}
-      />
-      <SellModal
-        visible={sellOpen}
-        onClose={() => setSellOpen(false)}
-        onSubmit={publish}
-      />
+      <Modal visible={authOpen} animationType="slide" onRequestClose={() => setAuthOpen(false)}>
+        <AuthPage
+          onSignIn={signInWithEmail}
+          onSignUp={signUpWithEmail}
+          onGoogle={signInWithGoogle}
+          onGuest={() => setAuthOpen(false)}
+        />
+      </Modal>
     </SafeAreaView>
   );
 }
 
-function BottomNav({
-  tab,
-  savedCount,
-  onChange,
-  onSell,
-}: {
-  tab: Tab;
-  savedCount: number;
-  onChange: (tab: Tab) => void;
-  onSell: () => void;
-}) {
-  return (
-    <View style={styles.nav}>
-      <NavItem
-        label="Explore"
-        icon="⌂"
-        active={tab === "Explore"}
-        onPress={() => onChange("Explore")}
-      />
-      <NavItem
-        label="Saved"
-        icon="♡"
-        active={tab === "Saved"}
-        badge={savedCount}
-        onPress={() => onChange("Saved")}
-      />
-      <NavItem
-        label="Messages"
-        icon="□"
-        active={tab === "Messages"}
-        onPress={() => onChange("Messages")}
-      />
-      <Pressable style={styles.sellButton} onPress={onSell}>
-        <Text style={styles.sellPlus}>＋</Text>
-        <Text style={styles.sellText}>Sell</Text>
-      </Pressable>
-    </View>
-  );
-}
-function NavItem({
-  label,
-  icon,
-  active,
-  badge,
-  onPress,
-}: {
-  label: string;
-  icon: string;
-  active: boolean;
-  badge?: number;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable style={styles.navItem} onPress={onPress}>
-      <View>
-        <Text style={[styles.navIcon, active && styles.navActive]}>{icon}</Text>
-        {badge ? (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{badge}</Text>
-          </View>
-        ) : null}
-      </View>
-      <Text style={[styles.navLabel, active && styles.navActive]}>{label}</Text>
-    </Pressable>
-  );
-}
-function ListingModal({
-  item,
-  user,
-  onClose,
-  onContact,
-}: {
-  item: Listing | null;
-  user: User | null;
-  onClose: () => void;
-  onContact: () => void;
-}) {
-  return (
-    <Modal
-      visible={item !== null}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      {item && (
-        <View style={styles.backdrop}>
-          <View style={styles.detail}>
-            <Image source={{ uri: item.image }} style={styles.detailImage} />
-            <Pressable style={styles.close} onPress={onClose}>
-              <Text style={styles.closeText}>×</Text>
-            </Pressable>
-            <View style={styles.detailBody}>
-              <Text style={styles.detailCategory}>
-                {item.category.toUpperCase()}
-              </Text>
-              <Text style={styles.detailTitle}>{item.title}</Text>
-              <Text style={styles.detailPrice}>${item.price}</Text>
-              <Text style={styles.muted}>
-                {item.condition} · {item.campus} · {item.seller}
-              </Text>
-              <Text style={styles.description}>{item.description}</Text>
-              <Pressable style={styles.primary} onPress={onContact}>
-                <Text style={styles.primaryText}>
-                  {user
-                    ? `Message ${item.seller}`
-                    : "Sign in to contact seller"}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      )}
-    </Modal>
-  );
-}
-function AuthModal({
-  visible,
-  onClose,
-  onSignIn,
-  error,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  onSignIn: () => Promise<void>;
-  error: string;
-}) {
-  return (
-    <Modal visible={visible} transparent animationType="fade">
-      <View style={styles.backdrop}>
-        <View style={styles.auth}>
-          <Text style={styles.formTitle}>Welcome to campus marketplace</Text>
-          <Text style={styles.authMessage}>
-            Sign in to save listings, message sellers, and publish your own
-            items.
-          </Text>
-          {error ? <Text style={styles.authError}>{error}</Text> : null}
-          <Pressable style={styles.googleButton} onPress={onSignIn}>
-            <Text style={styles.googleMark}>G</Text>
-            <Text style={styles.outlineText}>Continue with Google</Text>
-          </Pressable>
-          <Pressable style={styles.outline} onPress={onClose}>
-            <Text style={styles.outlineText}>Maybe later</Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-function SellModal({
-  visible,
-  onClose,
-  onSubmit,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  onSubmit: (title: string, price: string, category: string) => Promise<void>;
-}) {
-  const [title, setTitle] = useState("");
-  const [price, setPrice] = useState("");
-  const [category, setCategory] = useState("Textbooks");
-  return (
-    <Modal visible={visible} transparent animationType="slide">
-      <View style={styles.backdrop}>
-        <View style={styles.form}>
-          <View style={styles.formHeader}>
-            <Text style={styles.formTitle}>Sell an item</Text>
-            <Pressable onPress={onClose}>
-              <Text style={styles.closeText}>×</Text>
-            </Pressable>
-          </View>
-          <Text style={styles.label}>What are you selling?</Text>
-          <TextInput
-            value={title}
-            onChangeText={setTitle}
-            placeholder="e.g. Organic Chemistry textbook"
-            style={styles.field}
-          />
-          <Text style={styles.label}>Price</Text>
-          <TextInput
-            value={price}
-            onChangeText={setPrice}
-            keyboardType="numeric"
-            placeholder="$ 0"
-            style={styles.field}
-          />
-          <Pressable
-            disabled={!title || !price}
-            style={[styles.primary, (!title || !price) && styles.disabled]}
-            onPress={() => onSubmit(title, price, category)}
-          >
-            <Text style={styles.primaryText}>Publish listing</Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F8F8F4" },
-  nav: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 82,
-    backgroundColor: "#FFF",
-    borderTopWidth: 1,
-    borderTopColor: "#E8EBE5",
-    flexDirection: "row",
-    justifyContent: "space-around",
-    alignItems: "center",
-  },
-  navItem: { alignItems: "center", minWidth: 54 },
-  navIcon: { color: "#83918A", fontSize: 22 },
-  navLabel: { color: "#83918A", fontSize: 10, marginTop: 3 },
-  navActive: { color: "#1D6B54" },
-  badge: {
-    position: "absolute",
-    right: -12,
-    top: -3,
-    backgroundColor: "#C3535B",
-    borderRadius: 8,
-    minWidth: 16,
-    height: 16,
-    alignItems: "center",
-  },
-  badgeText: { color: "#FFF", fontSize: 9, fontWeight: "800" },
-  sellButton: {
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: "#E6F0E6",
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    gap: 4,
-  },
-  sellPlus: { color: "#247055", fontSize: 20 },
-  sellText: { color: "#247055", fontWeight: "800", fontSize: 12 },
-  backdrop: {
-    flex: 1,
-    backgroundColor: "rgba(15,40,33,.45)",
-    justifyContent: "flex-end",
-  },
-  detail: {
-    backgroundColor: "#FFF",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    overflow: "hidden",
-  },
-  detailImage: { width: "100%", height: 230 },
-  close: {
-    position: "absolute",
-    top: 14,
-    right: 14,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "#FFF",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  closeText: { color: "#173C34", fontSize: 26 },
-  detailBody: { padding: 24 },
-  detailCategory: {
-    color: "#23775D",
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 1.5,
-  },
-  detailTitle: {
-    color: "#173C34",
-    fontSize: 25,
-    fontWeight: "800",
-    marginTop: 8,
-  },
-  detailPrice: {
-    color: "#1C7057",
-    fontSize: 22,
-    fontWeight: "800",
-    marginTop: 8,
-  },
-  muted: { color: "#87918C", fontSize: 12 },
-  description: {
-    color: "#66736D",
-    fontSize: 14,
-    lineHeight: 21,
-    marginVertical: 20,
-  },
-  primary: {
-    height: 50,
-    backgroundColor: "#1F5D4C",
-    borderRadius: 14,
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 24,
-  },
-  primaryText: { color: "#FFF", fontWeight: "800" },
-  auth: { backgroundColor: "#FFF", borderRadius: 20, padding: 24, margin: 20 },
-  form: {
-    backgroundColor: "#FFF",
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-  },
-  formHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  formTitle: { color: "#173C34", fontSize: 22, fontWeight: "800" },
-  authMessage: { color: "#87918C", lineHeight: 20, marginTop: 10 },
-  authError: {
-    color: "#B64950",
-    backgroundColor: "#FBECEE",
-    borderRadius: 10,
-    padding: 10,
-    fontSize: 12,
-    marginTop: 16,
-  },
-  googleButton: {
-    height: 50,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#D7DDD8",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 24,
-    gap: 10,
-  },
-  googleMark: { color: "#4285F4", fontSize: 18, fontWeight: "800" },
-  outline: {
-    height: 50,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#BCD0C3",
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 12,
-  },
-  outlineText: { color: "#1F5D4C", fontWeight: "800" },
-  label: {
-    color: "#365B4C",
-    fontSize: 12,
-    fontWeight: "800",
-    marginTop: 18,
-    marginBottom: 7,
-  },
-  field: {
-    height: 50,
-    borderWidth: 1,
-    borderColor: "#DDE4DC",
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    color: "#173C34",
-  },
-  disabled: { opacity: 0.45 },
+  container: { flex: 1, backgroundColor: colors.bg },
+  toastWrap: { position: "absolute", left: 0, right: 0, bottom: 110, alignItems: "center", zIndex: 60 },
+  toast: { backgroundColor: colors.ink, borderRadius: 20, paddingHorizontal: 18, paddingVertical: 11 },
+  toastText: { color: "#FFF", fontWeight: "700", fontSize: 13 },
 });

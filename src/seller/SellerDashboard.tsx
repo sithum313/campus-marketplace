@@ -1,0 +1,99 @@
+import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
+import { AppIcon } from "../components/AppIcon";
+import { Button, page } from "../components/ui";
+import { colors, money } from "../theme";
+import { Listing, Offer, Order } from "../types";
+
+export function SellerDashboard({
+  name,
+  products,
+  eventProducts,
+  offers,
+  orders,
+  onAddProduct,
+  onCreateEvent,
+  onOrders,
+}: {
+  name: string;
+  products: Listing[];
+  eventProducts: Listing[];
+  offers: Offer[];
+  orders: Order[];
+  onAddProduct: () => void;
+  onCreateEvent: () => void;
+  onOrders: () => void;
+}) {
+  const newOrders = orders.filter((o) => o.status === "Placed").length;
+  const revenue = orders.filter((o) => o.status !== "Cancelled").reduce((s, o) => s + o.total, 0);
+  const tickets = eventProducts.filter((p) => p.kind === "ticket").reduce((s, p) => s + (p.sold || 0), 0);
+  const stats = [
+    { label: "Products live", value: String(products.filter((p) => !p.soldOut).length), icon: "cube-outline", tint: colors.teal },
+    { label: "New orders", value: String(newOrders), icon: "notifications-outline", tint: colors.yellow },
+    { label: "Revenue", value: money(Math.round(revenue * 100) / 100), icon: "cash-outline", tint: colors.pink },
+    { label: "Tickets sold", value: String(tickets), icon: "ticket-outline", tint: colors.blue },
+  ];
+  return (
+    <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <View style={styles.hero}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.hi}>Seller space</Text>
+          <Text style={styles.heroTitle}>Sell with{"\n"}ease, {name.split(" ")[0]}</Text>
+          <Text style={styles.heroSub}>List products, run event sales and manage orders in one place.</Text>
+        </View>
+        <Image source={require("../../assets/onboarding/sell.png")} style={styles.art} resizeMode="contain" />
+      </View>
+
+      <View style={styles.grid}>
+        {stats.map((s) => (
+          <View key={s.label} style={[styles.stat, { backgroundColor: s.tint }]}>
+            <AppIcon name={s.icon} size={20} />
+            <Text style={styles.statValue}>{s.value}</Text>
+            <Text style={styles.statLabel}>{s.label}</Text>
+          </View>
+        ))}
+      </View>
+
+      <View style={styles.actions}>
+        <Button icon="add-circle-outline" label="Add product" onPress={onAddProduct} style={{ flex: 1 }} />
+        <Button kind="outline" icon="calendar-outline" label="New event" onPress={onCreateEvent} style={{ flex: 1 }} />
+      </View>
+
+      <Text style={styles.section}>Needs your attention</Text>
+      <View style={styles.card}>
+        <Text style={styles.cardText}>
+          {newOrders ? `${newOrders} new order${newOrders === 1 ? "" : "s"} waiting for you.` : "No new orders right now."}
+        </Text>
+        <Text style={styles.cardSub}>
+          {offers.length} active event offer{offers.length === 1 ? "" : "s"} · {eventProducts.length} event products
+        </Text>
+        <Button kind="soft" label="Open orders" onPress={onOrders} style={{ marginTop: 12, height: 42 }} />
+      </View>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  content: page,
+  hero: {
+    backgroundColor: colors.pink,
+    borderRadius: 26,
+    padding: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 40,
+    overflow: "hidden",
+  },
+  hi: { color: colors.ink, opacity: 0.6, fontSize: 12, fontWeight: "800", letterSpacing: 1 },
+  heroTitle: { color: colors.ink, fontSize: 26, lineHeight: 30, fontWeight: "900", marginTop: 6 },
+  heroSub: { color: colors.ink, opacity: 0.75, fontSize: 12, lineHeight: 17, marginTop: 8, maxWidth: 170 },
+  art: { width: 150, height: 130, marginRight: -10 },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginTop: 16 },
+  stat: { width: "48%", flexGrow: 1, borderRadius: 20, padding: 16, gap: 4 },
+  statValue: { color: colors.ink, fontSize: 24, fontWeight: "900", marginTop: 6 },
+  statLabel: { color: colors.ink, opacity: 0.7, fontSize: 12, fontWeight: "600" },
+  actions: { flexDirection: "row", gap: 10, marginTop: 16 },
+  section: { color: colors.ink, fontSize: 18, fontWeight: "800", marginTop: 28, marginBottom: 12 },
+  card: { backgroundColor: "#FFF", borderRadius: 18, padding: 16, borderWidth: 1, borderColor: colors.line },
+  cardText: { color: colors.ink, fontWeight: "800", fontSize: 15 },
+  cardSub: { color: colors.muted, fontSize: 12, marginTop: 4 },
+});
