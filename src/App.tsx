@@ -15,6 +15,7 @@ import {
 } from "firebase/auth";
 import {
   collection,
+  writeBatch,
   doc,
   onSnapshot,
   orderBy,
@@ -106,9 +107,9 @@ export default function App() {
   // buyer data
   const [cart, setCart] = useState<CartLine[]>([]);
   const [orders, setOrders] = useState<Order[]>(() => {
+    if (firebaseConfigured) return [];
     const local = getStoredOrders();
-    if (local.length > 0) return local;
-    return firebaseConfigured ? [] : seedOrders;
+    return local.length > 0 ? local : seedOrders;
   });
   const [conversations, setConversations] = useState<Conversation[]>(
     firebaseConfigured ? [] : seedConversations,
@@ -191,74 +192,24 @@ export default function App() {
           const tB = b.createdAt?.toMillis?.() || 0;
           return tB - tA;
         });
-        setOrders((prev) => {
-          const cloudIds = new Set(list.map((o) => o.id));
-          const localOnly = prev.filter((o) => !cloudIds.has(o.id) && o.id.startsWith("ORD-"));
-          const merged = [...list, ...localOnly];
-          setStoredOrders(merged);
-          return merged;
-        });
+        setOrders(list);
       },
       (error) => console.warn("Buyer orders sync notice:", error.message),
     );
   }, [user?.uid]);
 
-  // Sync Seller Orders from Firestore (dual-query for sellerId and sellerIds)
+  // Only show orders whose sellerId belongs to the signed-in seller.
   useEffect(() => {
-    if (!db || !user) return;
-
-    const cloudOrdersMap = new Map<string, Order>();
-
-    const updateCombinedSellerOrders = () => {
-      const cloudList = Array.from(cloudOrdersMap.values());
-      cloudList.sort((a, b) => {
-        const tA = a.createdAt?.toMillis?.() || 0;
-        const tB = b.createdAt?.toMillis?.() || 0;
-        return tB - tA;
+    if (!db || !user) { setSellerOrders([]); return; }
+    const q = query(collection(db, "orders"), where("sellerId", "==", user.uid));
+    return onSnapshot(q, (snapshot) => {
+      const list = snapshot.docs.map((entry) => {
+        const data = entry.data();
+        return { ...data, id: entry.id, party: data.buyerName || "Buyer" } as Order;
       });
-
-      setSellerOrders((prev) => {
-        const cloudIds = new Set(cloudList.map((o) => o.id));
-        const localOnly = prev.filter((o) => !cloudIds.has(o.id));
-        const merged = [...cloudList, ...localOnly];
-        setStoredSellerOrders(merged);
-        return merged;
-      });
-    };
-
-    const processSnapshot = (snapshot: any) => {
-      snapshot.docs.forEach((d: any) => {
-        const data = d.data();
-        const item: Order = {
-          ...data,
-          id: d.id,
-          party: data.buyerName || data.party || "Buyer",
-        };
-        cloudOrdersMap.set(d.id, item);
-      });
-      updateCombinedSellerOrders();
-    };
-
-    // Query 1: Direct sellerId match (matches rules with resource.data.sellerId == request.auth.uid)
-    const q1 = query(collection(db, "orders"), where("sellerId", "==", user.uid));
-    const unsub1 = onSnapshot(
-      q1,
-      processSnapshot,
-      (err) => console.warn("Seller orders (by sellerId) notice:", err.message),
-    );
-
-    // Query 2: Array-contains match (matches multi-seller arrays)
-    const q2 = query(collection(db, "orders"), where("sellerIds", "array-contains", user.uid));
-    const unsub2 = onSnapshot(
-      q2,
-      processSnapshot,
-      (err) => console.warn("Seller orders (by sellerIds) notice:", err.message),
-    );
-
-    return () => {
-      unsub1();
-      unsub2();
-    };
+      list.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
+      setSellerOrders(list);
+    }, (error) => console.warn("Could not load seller orders:", error));
   }, [user?.uid]);
 
   // Sync user conversations (both where user is buyer or seller)
@@ -413,93 +364,94 @@ export default function App() {
       flash("Some cart items are unavailable or exceed stock. Please review your cart.");
       return;
     }
-    const sellers = Array.from(new Set(rows.map((r) => r.item.seller)));
-    const itemSellerId = rows.find((r) => r.item.sellerId)?.item.sellerId;
-    const targetSellerId = itemSellerId || user?.uid || ownerId || "demo-seller";
-    const sellerIds = Array.from(
-      new Set(
-        [
-          itemSellerId,
-          targetSellerId,
-          user?.uid,
-          ownerId,
-          "demo-seller",
-          ...rows.map((r) => r.item.sellerId),
-        ].filter(Boolean),
-      ),
-    ) as string[];
-    const eventIds = Array.from(new Set(rows.map((r) => r.item.eventId)));
-    const orderNumber = `ORD-${Math.floor(1000 + Math.random() * 9000)}`;
-
+    // Create a separate order for each seller. Do not assign an order to the buyer.
+    const grouped = new Map<string, typeof rows>();
+    for (const row of rows) {
+      const sellerId = row.item.sellerId;
+      if (!sellerId && db && user) {
+        flash(`Seller account is missing for ${row.item.title}. Order not placed.`);
+        return;
+      }
+      const key = sellerId || "demo-seller";
+      grouped.set(key, [...(grouped.get(key) || []), row]);
+    }
     const promoDiscount = details?.promoDiscount || 0;
-    const payableTotal = Math.max(0, Math.round((total - promoDiscount) * 100) / 100);
-
-    const orderPayload: Order = {
-      id: orderNumber,
-      date: today(),
-      status: "Placed" as OrderStatus,
-      party: sellers.length > 2 ? `${sellers.length} sellers` : (sellers[0] || "Seller"),
-      eventId: eventIds.length === 1 ? eventIds[0] : undefined,
-      total: payableTotal,
-      lines: rows.map((r) => ({
-        title: r.item.title,
-        qty: r.line.qty,
-        unitPrice: r.item.price,
-        variant: variantLabel(r.line) || undefined,
-        itemId: r.item.id,
-      })),
-      buyerId: user?.uid || ownerId,
-      buyerName: ownerName,
-      buyerEmail: user?.email || "",
-      sellerId: targetSellerId,
-      sellerIds,
-      meetupSpot: details?.meetupSpotName || "Campus Safe Handover",
-      meetupTime: details?.meetupTime,
-      notes: details?.notes,
-      promoCode: details?.promoCode,
-      discount: promoDiscount,
-    };
-
-    // 1. Immediately update buyer orders and persist
-    setOrders((o) => {
-      const next = [orderPayload, ...o.filter((x) => x.id !== orderNumber)];
-      setStoredOrders(next);
-      return next;
-    });
-
-    // 2. Immediately update seller orders with the exact same orderNumber
-    const sellerOrderEntry: Order = {
-      ...orderPayload,
-      party: ownerName,
-    };
-    setSellerOrders((o) => {
-      const next = [sellerOrderEntry, ...o.filter((x) => x.id !== orderNumber)];
-      setStoredSellerOrders(next);
-      return next;
-    });
+    const newOrders: Order[] = [];
+    for (const [sellerId, sellerRows] of grouped) {
+      const eventIds = Array.from(new Set(sellerRows.map((r) => r.item.eventId)));
+      const sellerTotal = priceCart(sellerRows.map((r) => r.line), items, offers).total;
+      const share = total > 0 ? promoDiscount * sellerTotal / total : 0;
+      newOrders.push({
+        id: `ORD-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`.toUpperCase(),
+        date: today(),
+        status: "Placed",
+        party: sellerRows[0].item.seller || "Seller",
+        eventId: eventIds.length === 1 ? eventIds[0] : undefined,
+        total: Math.max(0, Math.round((sellerTotal - share) * 100) / 100),
+        lines: sellerRows.map((r) => ({
+          title: r.item.title,
+          qty: r.line.qty,
+          unitPrice: r.item.price,
+          variant: variantLabel(r.line) || undefined,
+          itemId: r.item.id,
+        })),
+        buyerId: user?.uid || ownerId,
+        buyerName: ownerName,
+        buyerEmail: user?.email || "",
+        sellerId,
+        meetupSpot: details?.meetupSpotName || "Campus Safe Handover",
+        meetupTime: details?.meetupTime,
+        notes: details?.notes,
+        promoCode: details?.promoCode,
+        discount: share,
+      });
+    }
 
     if (db && user) {
+      // Only report success after every seller's order is stored successfully.
       try {
-        await setDoc(doc(db, "orders", orderNumber), {
-          ...clean(orderPayload),
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-        // Update stock in Firestore for cloud listings
-        for (const r of rows) {
-          if (cloudItems.some((ci) => ci.id === r.item.id)) {
-            const currentStock = r.item.stock;
-            const nextStock = currentStock === undefined ? undefined : Math.max(0, currentStock - r.line.qty);
-            await updateDoc(doc(db, "listings", r.item.id), {
-              sold: (r.item.sold || 0) + r.line.qty,
-              ...(nextStock === undefined ? {} : { stock: nextStock, soldOut: nextStock === 0 }),
-              updatedAt: serverTimestamp(),
-            });
-          }
+        const batch = writeBatch(db);
+        for (const order of newOrders) {
+          batch.set(doc(db, "orders", order.id), {
+            ...clean(order),
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
         }
+        await batch.commit();
       } catch (error) {
-        console.warn("Could not save order to cloud:", error);
+        flash(error instanceof Error ? `Order not sent: ${error.message}` : "Order not sent");
+        return;
       }
+      // The buyer and seller Firestore listeners receive their respective orders.
+      for (const row of rows.filter((row, index, all) => all.findIndex((other) => other.item.id === row.item.id) === index)) {
+        if (!cloudItems.some((item) => item.id === row.item.id)) continue;
+        const item = row.item;
+        const qty = cart.filter((line) => line.itemId === item.id).reduce((sum, line) => sum + line.qty, 0);
+        try {
+          await updateDoc(doc(db, "listings", item.id), {
+            sold: (item.sold || 0) + qty,
+            ...(item.stock === undefined ? {} : {
+              stock: Math.max(0, item.stock - qty),
+              soldOut: item.stock - qty <= 0,
+            }),
+            updatedAt: serverTimestamp(),
+          });
+        } catch (error) {
+          console.warn("Could not update listing stock:", error);
+        }
+      }
+    } else {
+      setOrders((previous) => {
+        const next = [...newOrders, ...previous];
+        setStoredOrders(next);
+        return next;
+      });
+      setSellerOrders((previous) => {
+        const next = [...newOrders.map((order) => ({ ...order, party: ownerName })), ...previous];
+        setStoredSellerOrders(next);
+        return next;
+      });
     }
 
     // Keep local stock / sold counts in step
@@ -515,29 +467,10 @@ export default function App() {
       }
       return next;
     });
-    // demo: orders on your own products show up in seller mode too
-    const mine = rows.filter((r) => r.item.sellerId === ownerId);
-    if (mine.length)
-      setSellerOrders((o) => [
-        {
-          id: `S-${Math.floor(1000 + Math.random() * 9000)}`,
-          date: today(),
-          status: "Placed",
-          party: ownerName,
-          total: Math.round(mine.reduce((s, r) => s + r.gross - r.discount, 0) * 100) / 100,
-          lines: mine.map((r) => ({
-            title: r.item.title,
-            qty: r.line.qty,
-            unitPrice: r.item.price,
-            variant: variantLabel(r.line) || undefined,
-          })),
-        },
-        ...o,
-      ]);
     setCart([]);
     setProfileTab((p) => ({ tab: "ongoing", nonce: p.nonce + 1 }));
     goTab("Profile");
-    flash(`Order ${orderNumber} placed`);
+    flash(`${newOrders.length} order${newOrders.length === 1 ? "" : "s"} placed`);
   };
 
   const cancelOrder = async (id: string) => {
