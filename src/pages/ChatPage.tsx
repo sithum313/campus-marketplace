@@ -50,14 +50,10 @@ export function ChatPage({
   conversation,
   onSend,
   onBack,
-  currentUserId,
-  isSeller: isSellerProp,
 }: {
   conversation: Conversation;
   onSend: (text: string) => void;
   onBack: () => void;
-  currentUserId?: string;
-  isSeller?: boolean;
 }) {
   const [text, setText] = useState("");
   const [showPrompts, setShowPrompts] = useState(true);
@@ -92,7 +88,6 @@ export function ChatPage({
     setText("");
     setTimeout(() => scroller.current?.scrollToEnd({ animated: true }), 60);
   };
-
   return (
     <KeyboardAvoidingView
       style={styles.screen}

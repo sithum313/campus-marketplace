@@ -25,11 +25,11 @@ import {
   where,
 } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Modal, Platform, SafeAreaView, StyleSheet, Text, View } from "react-native";
+import { Alert, Modal, Platform, SafeAreaView, StyleSheet, Text, View } from "react-native";
 import { BottomTabs, buyerTabs } from "./components/BottomTabs";
 import { ListingModal } from "./components/ListingModal";
 import { ModeToggle } from "./components/ModeToggle";
-import { seedConversations, seedEvents, seedListings, seedOffers, seedOrders, seedSellerOrders } from "./data";
+import { seedEvents, seedListings, seedOffers, seedOrders, seedSellerOrders } from "./data";
 import { auth, db, firebaseConfigured } from "./firebase";
 import { CheckoutDetails, lineKeyOf, priceCart, variantLabel } from "./lib/cart";
 import { applyFilters, defaultFilters } from "./lib/filter";
@@ -51,7 +51,6 @@ import {
   Conversation,
   Filters,
   Listing,
-  Message,
   Mode,
   Offer,
   Order,
@@ -77,59 +76,6 @@ async function registerUser(user: User) {
   );
 }
 
-const getStoredOnboarded = (): boolean => {
-  try {
-    if (typeof window !== "undefined" && window.localStorage) {
-      return window.localStorage.getItem("campus_marketplace_onboarded") === "true";
-    }
-  } catch {}
-  return false;
-};
-
-const setStoredOnboarded = () => {
-  try {
-    if (typeof window !== "undefined" && window.localStorage) {
-      window.localStorage.setItem("campus_marketplace_onboarded", "true");
-    }
-  } catch {}
-};
-
-const getStoredOrders = (): Order[] => {
-  try {
-    if (typeof window !== "undefined" && window.localStorage) {
-      const saved = window.localStorage.getItem("campus_marketplace_buyer_orders");
-      if (saved) return JSON.parse(saved);
-    }
-  } catch {}
-  return [];
-};
-
-const setStoredOrders = (list: Order[]) => {
-  try {
-    if (typeof window !== "undefined" && window.localStorage) {
-      window.localStorage.setItem("campus_marketplace_buyer_orders", JSON.stringify(list));
-    }
-  } catch {}
-};
-
-const getStoredSellerOrders = (): Order[] => {
-  try {
-    if (typeof window !== "undefined" && window.localStorage) {
-      const saved = window.localStorage.getItem("campus_marketplace_seller_orders");
-      if (saved) return JSON.parse(saved);
-    }
-  } catch {}
-  return seedSellerOrders;
-};
-
-const setStoredSellerOrders = (list: Order[]) => {
-  try {
-    if (typeof window !== "undefined" && window.localStorage) {
-      window.localStorage.setItem("campus_marketplace_seller_orders", JSON.stringify(list));
-    }
-  } catch {}
-};
-
 const today = () =>
   new Date().toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 const clean = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
@@ -143,11 +89,10 @@ export default function App() {
   const [savedIds, setSavedIds] = useState<string[]>([]);
   const [selected, setSelected] = useState<Listing | null>(null);
   const [user, setUser] = useState<User | null>(auth?.currentUser || null);
-  const [authLoading, setAuthLoading] = useState<boolean>(Boolean(auth));
   const [authOpen, setAuthOpen] = useState(false);
   const [authError, setAuthError] = useState("");
   const [profileReady, setProfileReady] = useState(false);
-  const [onboarded, setOnboarded] = useState<boolean>(getStoredOnboarded);
+  const [onboarded, setOnboarded] = useState(false);
   const [toast, setToast] = useState("");
 
   // marketplace data
@@ -188,28 +133,19 @@ export default function App() {
 
   useEffect(() => {
     const firebaseAuth = auth;
-    if (!firebaseAuth) {
-      setAuthLoading(false);
-      return;
-    }
+    if (!firebaseAuth) return;
     const handleUser = (nextUser: User | null) => {
       setUser(nextUser);
-      setAuthLoading(false);
-      if (nextUser) {
-        setOnboarded(true);
-        setStoredOnboarded();
+      if (nextUser)
         registerUser(nextUser)
           .then(() => setProfileReady(true))
           .catch((error) =>
             setAuthError(error instanceof Error ? error.message : "Could not create profile."),
           );
-      } else {
-        setProfileReady(false);
-      }
+      else setProfileReady(false);
     };
-
     let unsubscribe: () => void = () => undefined;
-    (Platform.OS === "web" ? setPersistence(firebaseAuth, browserLocalPersistence) : Promise.resolve())
+    setPersistence(firebaseAuth, browserLocalPersistence)
       .then(() => {
         unsubscribe = onAuthStateChanged(firebaseAuth, handleUser);
         return getRedirectResult(firebaseAuth);
@@ -217,15 +153,12 @@ export default function App() {
       .then((result) => {
         if (result?.user) handleUser(result.user);
       })
-      .catch((error) => {
-        setAuthLoading(false);
-        setAuthError(error instanceof Error ? error.message : "Google sign-in could not be completed.");
-      });
-
+      .catch((error) =>
+        setAuthError(error instanceof Error ? error.message : "Google sign-in could not be completed."),
+      );
     return () => unsubscribe();
   }, []);
 
-  // Sync listings from Firestore
   useEffect(() => {
     if (!db) return;
     const listingsQuery = query(collection(db, "listings"), orderBy("createdAt", "desc"));
@@ -437,24 +370,11 @@ export default function App() {
 
   /* ---------- buyer actions ---------- */
 
-  const toggleSaved = async (id: string) => {
-    if (needsSignIn) { setAuthOpen(true); return; }
-    if (db && user) {
-      try {
-        const favorite = doc(db, "users", user.uid, "saved", id);
-        if (savedIds.includes(id)) await deleteDoc(favorite);
-        else await setDoc(favorite, { listingId: id, savedAt: serverTimestamp() });
-      } catch (error) { flash(error instanceof Error ? error.message : "Could not update favorites"); }
-      return;
-    }
-    setSavedIds((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
-  };
+  const toggleSaved = (id: string) =>
+    setSavedIds((current) =>
+      current.includes(id) ? current.filter((value) => value !== id) : [...current, id],
+    );
   const addToCart = (input: Omit<CartLine, "key">) => {
-    const item = items.find((i) => i.id === input.itemId);
-    if (!item || item.soldOut || item.stock === 0) { flash("This item is unavailable"); return; }
-    if (!Number.isInteger(input.qty) || input.qty < 1) return;
-    const existing = cart.filter((l) => l.itemId === input.itemId).reduce((n, l) => n + l.qty, 0);
-    if (item.stock !== undefined && existing + input.qty > item.stock) { flash("Not enough stock available"); return; }
     const key = lineKeyOf(input.itemId, input);
     setCart((current) =>
       current.some((l) => l.key === key)
@@ -462,14 +382,8 @@ export default function App() {
         : [...current, { ...input, key }],
     );
   };
-  const setLineQty = (key: string, qty: number) => {
-    const line = cart.find((l) => l.key === key);
-    if (!line || !Number.isInteger(qty) || qty < 1) return;
-    const item = items.find((i) => i.id === line.itemId);
-    const otherQty = cart.filter((l) => l.itemId === line.itemId && l.key !== key).reduce((n, l) => n + l.qty, 0);
-    if (item?.stock !== undefined && qty + otherQty > item.stock) { flash("Not enough stock available"); return; }
-    setCart((current) => current.map((l) => l.key === key ? { ...l, qty } : l));
-  };
+  const setLineQty = (key: string, qty: number) =>
+    setCart((current) => current.map((l) => (l.key === key ? { ...l, qty } : l)));
   const removeLine = (key: string) => setCart((current) => current.filter((l) => l.key !== key));
 
   const goTab = (next: Tab) => {
@@ -601,7 +515,25 @@ export default function App() {
       }
       return next;
     });
-
+    // demo: orders on your own products show up in seller mode too
+    const mine = rows.filter((r) => r.item.sellerId === ownerId);
+    if (mine.length)
+      setSellerOrders((o) => [
+        {
+          id: `S-${Math.floor(1000 + Math.random() * 9000)}`,
+          date: today(),
+          status: "Placed",
+          party: ownerName,
+          total: Math.round(mine.reduce((s, r) => s + r.gross - r.discount, 0) * 100) / 100,
+          lines: mine.map((r) => ({
+            title: r.item.title,
+            qty: r.line.qty,
+            unitPrice: r.item.price,
+            variant: variantLabel(r.line) || undefined,
+          })),
+        },
+        ...o,
+      ]);
     setCart([]);
     setProfileTab((p) => ({ tab: "ongoing", nonce: p.nonce + 1 }));
     goTab("Profile");
@@ -628,142 +560,104 @@ export default function App() {
       return next;
     });
   };
+  const cancelOrder = (id: string) =>
+    setOrders((o) => o.map((x) => (x.id === id ? { ...x, status: "Cancelled" } : x)));
 
-  const openChat = async (item: Listing) => {
+  const openChat = (item: Listing) => {
     if (needsSignIn) return setAuthOpen(true);
-    if (item.sellerId && item.sellerId === user?.uid) {
-      flash("You cannot message yourself");
-      return;
-    }
-    const targetSellerId = item.sellerId || "demo-seller";
-    const targetSellerName = item.seller;
-
-    if (db && user) {
-      try {
-        const existing = conversations.find(
-          (c) =>
-            c.itemId === item.id &&
-            c.memberIds?.includes(user.uid) &&
-            c.memberIds?.includes(targetSellerId),
-        );
-        if (existing) {
-          setChatId(existing.id);
-        } else {
-          const newDoc = await addDoc(
-            collection(db, "conversations"),
-            clean({
-              itemId: item.id,
-              itemTitle: item.title,
-              seller: targetSellerName,
-              sellerId: targetSellerId,
-              buyer: ownerName,
-              buyerId: user.uid,
-              memberIds: [user.uid, targetSellerId],
-              lastMessage: "",
-              lastMessageAt: Date.now(),
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-            }),
-          );
-          const newConv: Conversation = {
-            id: newDoc.id,
-            itemId: item.id,
-            itemTitle: item.title,
-            seller: targetSellerName,
-            sellerId: targetSellerId,
-            buyer: ownerName,
-            buyerId: user.uid,
-            memberIds: [user.uid, targetSellerId],
-            lastMessage: "",
-            lastMessageAt: Date.now(),
-            messages: [],
-          };
-          setConversations((prev) => [newConv, ...prev.filter((c) => c.id !== newDoc.id)]);
-          setChatId(newDoc.id);
-        }
-      } catch (e) {
-        flash(e instanceof Error ? e.message : "Could not initialize conversation");
-      }
-    } else {
-      const id = `c-${item.id}`;
-      setConversations((list) =>
-        list.some((c) => c.id === id)
-          ? list
-          : [
-              {
-                id,
-                itemId: item.id,
-                itemTitle: item.title,
-                seller: item.seller,
-                sellerId: targetSellerId,
-                buyer: ownerName,
-                buyerId: ownerId,
-                memberIds: [ownerId, targetSellerId],
-                messages: [],
-              },
-              ...list,
-            ],
-      );
-      setChatId(id);
-    }
-
+    const id = `c-${item.id}`;
+    setConversations((list) =>
+      list.some((c) => c.id === id)
+        ? list
+        : [{ id, itemId: item.id, itemTitle: item.title, seller: item.seller, messages: [] }, ...list],
+    );
+    setChatId(id);
     setSelected(null);
     setMode("buyer");
     setSubPage("chat");
     setTab("Messages");
   };
+  const sendMessage = (text: string) =>
+    setConversations((list) =>
+      list.map((c) =>
+        c.id === chatId
+          ? { ...c, messages: [...c.messages, { id: String(Date.now()), mine: true, text, at: Date.now() }] }
+          : c,
+      ),
+    );
 
-  const sendMessage = async (text: string, targetChatId?: string) => {
-    const cleanText = text.trim();
-    if (!cleanText) return;
-    const activeId = targetChatId || chatId;
-    if (!activeId) return;
+  /* ---------- seller actions ---------- */
 
-    const currentRole: "buyer" | "seller" = mode === "seller" ? "seller" : "buyer";
-
-    if (db && user && !activeId.startsWith("c-")) {
-      try {
-        await addDoc(collection(db, "conversations", activeId, "messages"), {
-          senderId: user.uid,
-          senderName: ownerName,
-          senderRole: currentRole,
-          text: cleanText,
-          createdAt: serverTimestamp(),
-        });
-        await updateDoc(doc(db, "conversations", activeId), {
-          lastMessage: cleanText,
-          lastMessageAt: Date.now(),
-          updatedAt: serverTimestamp(),
-        });
-      } catch (e) {
-        flash(e instanceof Error ? e.message : "Could not send message");
-      }
+  const patchListing = async (id: string, patch: Partial<Listing>) => {
+    if (db && cloudItems.some((i) => i.id === id)) {
+      await updateDoc(doc(db, "listings", id), clean(patch));
+    } else if (localItems.some((i) => i.id === id)) {
+      setLocalItems((list) => list.map((i) => (i.id === id ? { ...i, ...patch } : i)));
     } else {
-      setConversations((list) =>
-        list.map((c) =>
-          c.id === activeId
-            ? {
-                ...c,
-                lastMessage: cleanText,
-                lastMessageAt: Date.now(),
-                messages: [
-                  ...c.messages,
-                  {
-                    id: String(Date.now()),
-                    mine: true,
-                    senderId: ownerId,
-                    senderName: ownerName,
-                    senderRole: currentRole,
-                    text: cleanText,
-                    at: Date.now(),
-                  },
-                ],
-              }
-            : c,
-        ),
-      );
+      setEdits((current) => ({ ...current, [id]: { ...current[id], ...patch } }));
     }
   };
+  const saveProduct = async (draft: ProductDraft, id?: string) => {
+    if (needsSignIn) return setAuthOpen(true);
+    try {
+      const event = events.find((e) => e.id === draft.eventId);
+      const data = { ...draft, seller: event?.organizer || ownerName, sellerId: ownerId };
+      if (id) {
+        await patchListing(id, clean(data));
+        flash("Changes saved");
+      } else if (db && user && !draft.eventId) {
+        await addDoc(collection(db, "listings"), { ...clean(data), createdAt: serverTimestamp() });
+        flash("Product published");
+      } else {
+        setLocalItems((list) => [{ id: `local-${Date.now()}`, ...data }, ...list]);
+        flash(draft.eventId ? "Added to your event" : "Product published");
+      }
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "Could not save the product");
+    }
+  };
+  const deleteProduct = async (id: string) => {
+    try {
+      if (db && cloudItems.some((i) => i.id === id)) await deleteDoc(doc(db, "listings", id));
+      setLocalItems((list) => list.filter((i) => i.id !== id));
+      setRemoved((r) => [...r, id]);
+      flash("Removed");
+    } catch (error) {
+      flash(error instanceof Error ? error.message : "Could not delete");
+    }
+  };
+  const toggleSoldOut = (id: string) => {
+    const item = items.find((i) => i.id === id);
+    if (!item) return;
+    const out = item.soldOut || item.stock === 0;
+    patchListing(id, out ? { soldOut: false, stock: item.stock === 0 ? 1 : item.stock } : { soldOut: true }).catch(
+      (e) => flash(e instanceof Error ? e.message : "Could not update"),
+    );
+  };
+  const saveEvent = (data: Omit<CampusEvent, "id">, id?: string) => {
+    const eventId = id || `ev-${Date.now()}`;
+    setEvents((list) =>
+      id ? list.map((e) => (e.id === id ? { ...e, ...data } : e)) : [{ id: eventId, ...data }, ...list],
+    );
+    flash(id ? "Event updated" : "Event created");
+    return eventId;
+  };
+  const deleteEvent = (id: string) => {
+    const productIds = items.filter((i) => i.eventId === id).map((i) => i.id);
+    setEvents((list) => list.filter((e) => e.id !== id));
+    setOffers((list) => list.filter((o) => o.eventId !== id));
+    setLocalItems((list) => list.filter((i) => i.eventId !== id));
+    setRemoved((r) => [...r, ...productIds]);
+    flash("Event deleted");
+  };
+  const saveOffer = (offer: Omit<Offer, "id">) => {
+    setOffers((list) => [{ id: `o-${Date.now()}`, ...offer }, ...list]);
+    flash("Offer published to buyers");
+  };
+  const setOrderStatus = (id: string, status: OrderStatus) =>
+    setSellerOrders((o) => o.map((x) => (x.id === id ? { ...x, status } : x)));
+
+  /* ---------- auth (unchanged) ---------- */
 
   const signInWithEmail = async (email: string, password: string) => {
     if (!auth) throw new Error("Firebase is not configured yet.");
@@ -804,7 +698,8 @@ export default function App() {
         setProfileReady(true);
         setAuthOpen(false);
       } else {
-        throw new Error("Google sign-in is available on the web version. Please use email sign-in on mobile.");
+        await signInAnonymously(auth);
+        setAuthOpen(false);
       }
     } catch (error) {
       const code = error instanceof Error ? error.message : "Google sign-in failed.";
@@ -1004,7 +899,6 @@ export default function App() {
       <OnboardingPage
         onDone={() => {
           setOnboarded(true);
-          setStoredOnboarded();
           setAuthOpen(true);
         }}
       />
@@ -1019,18 +913,13 @@ export default function App() {
 
       {mode === "seller" ? (
         <SellerApp
-          ownerName={ownerName || "Seller"}
-          ownerId={ownerId}
+          ownerName={ownerName}
           campus="North Campus"
-          products={myProducts || []}
-          events={events || []}
-          eventProducts={eventProducts || []}
-          offers={offers || []}
-          orders={sellerOrders || []}
-          conversations={displaySellerConversations || []}
-          activeChatId={chatId}
-          onSelectChat={(id) => setChatId(id)}
-          onSendMessage={sendMessage}
+          products={myProducts}
+          events={events}
+          eventProducts={eventProducts}
+          offers={offers}
+          orders={sellerOrders}
           onSaveProduct={saveProduct}
           onDeleteProduct={deleteProduct}
           onToggleSoldOut={toggleSoldOut}
@@ -1085,21 +974,11 @@ export default function App() {
             />
           )}
           {tab === "Messages" && subPage === "chat" && activeChat && (
-            <ChatPage
-              conversation={activeChat}
-              currentUserId={ownerId}
-              isSeller={false}
-              onSend={(text) => sendMessage(text, activeChat.id)}
-              onBack={() => {
-                setChatId(null);
-                setSubPage(null);
-              }}
-            />
+            <ChatPage conversation={activeChat} onSend={sendMessage} onBack={() => setSubPage(null)} />
           )}
           {tab === "Messages" && !(subPage === "chat" && activeChat) && (
             <MessagesPage
-              conversations={displayBuyerConversations}
-              currentUserId={ownerId}
+              conversations={conversations}
               onOpen={(id) => {
                 setChatId(id);
                 setSubPage("chat");
@@ -1149,11 +1028,7 @@ export default function App() {
           )}
           {!(tab === "Messages" && subPage === "chat") && (
             <BottomTabs
-              tabs={buyerTabs.map((t) => {
-                if (t.key === "Cart") return { ...t, badge: cartUnits };
-                if (t.key === "Messages") return { ...t, badge: displayBuyerConversations.length };
-                return t;
-              })}
+              tabs={buyerTabs.map((t) => (t.key === "Cart" ? { ...t, badge: cartUnits } : t))}
               current={tab}
               onChange={(key) => goTab(key as Tab)}
             />
