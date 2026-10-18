@@ -49,14 +49,10 @@ export function MessagesPage({
   conversations,
   onOpen,
   onBrowse,
-  isSeller,
-  currentUserId,
 }: {
   conversations: Conversation[];
   onOpen: (id: string) => void;
   onBrowse: () => void;
-  isSeller?: boolean;
-  currentUserId?: string;
 }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "unread">("all");

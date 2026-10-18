@@ -6,7 +6,8 @@ service cloud.firestore {
 
     match /listings/{listingId} {
       allow read: if true;
-      allow create, update, delete: if signedIn();
+      allow create: if signedIn() && request.resource.data.sellerId == request.auth.uid;
+      allow update, delete: if signedIn() && resource.data.sellerId == request.auth.uid;
     }
 
     match /users/{userId} {
@@ -18,26 +19,10 @@ service cloud.firestore {
     }
 
     match /conversations/{conversationId} {
-      allow read, write: if signedIn();
-
+      allow read, write: if signedIn() && request.auth.uid in resource.data.memberIds;
       match /messages/{messageId} {
-        allow read, write: if signedIn();
+        allow read, create: if signedIn() && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.memberIds;
       }
-    }
-
-    match /orders/{orderId} {
-      allow read, write: if signedIn();
-    }
-
-    match /events/{eventId} {
-      allow read: if true;
-      allow write: if signedIn();
-    }
-
-    match /offers/{offerId} {
-      allow read: if true;
-      allow write: if signedIn();
     }
   }
 }
-

@@ -88,12 +88,34 @@ export function OrderCard({
         </View>
       </View>
 
-      {/* Campus Meetup Tag */}
-      <View style={styles.campusTagBanner}>
-        <AppIcon name="location-outline" size={13} color="#1E88E5" />
-        <Text style={styles.campusTagText}>
-          Campus Meetup & Peer Handover
-        </Text>
+      {/* Campus Handover Logistics Card */}
+      <View style={styles.handoverCard}>
+        <View style={styles.handoverRow}>
+          <AppIcon name="location-outline" size={13} color="#1E88E5" />
+          <Text style={styles.handoverSpotText} numberOfLines={1}>
+            <Text style={styles.handoverLabel}>Meetup: </Text>
+            {order.meetupSpot || "On-Campus Peer Meetup"}
+          </Text>
+        </View>
+
+        {order.meetupTime ? (
+          <View style={styles.handoverRow}>
+            <AppIcon name="time-outline" size={13} color="#E65100" />
+            <Text style={styles.handoverTimeText} numberOfLines={1}>
+              <Text style={styles.handoverLabel}>Timing: </Text>
+              {order.meetupTime}
+            </Text>
+          </View>
+        ) : null}
+
+        {order.notes ? (
+          <View style={styles.handoverNoteBox}>
+            <AppIcon name="chatbubble-ellipses-outline" size={12} color="#546E7A" />
+            <Text style={styles.handoverNoteText} numberOfLines={2}>
+              "{order.notes}"
+            </Text>
+          </View>
+        ) : null}
       </View>
 
       {/* Line Items */}
@@ -130,7 +152,13 @@ export function OrderCard({
       <View style={styles.foot}>
         <View>
           <Text style={styles.footMeta}>Order Total</Text>
-          <Text style={styles.footSub}>Includes student discounts</Text>
+          {order.promoCode && order.discount ? (
+            <Text style={styles.footPromo}>
+              Voucher {order.promoCode} applied (−{money(order.discount)})
+            </Text>
+          ) : (
+            <Text style={styles.footSub}>Includes student discounts</Text>
+          )}
         </View>
         <Text style={styles.total}>{money(order.total || 0)}</Text>
       </View>
@@ -199,21 +227,54 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     fontWeight: "700",
   },
-  campusTagBanner: {
+  handoverCard: {
+    backgroundColor: "#F4F8FD",
+    borderRadius: 12,
+    padding: 10,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: "#E1EDFB",
+    gap: 6,
+  },
+  handoverRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "#F0F7FF",
+  },
+  handoverLabel: {
+    fontWeight: "700",
+    color: colors.ink,
+  },
+  handoverSpotText: {
+    color: "#1565C0",
+    fontSize: 12,
+    fontWeight: "600",
+    flex: 1,
+  },
+  handoverTimeText: {
+    color: "#D84315",
+    fontSize: 12,
+    fontWeight: "600",
+    flex: 1,
+  },
+  handoverNoteBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 5,
+    backgroundColor: "#FFFFFF",
     borderRadius: 8,
     paddingHorizontal: 8,
-    paddingVertical: 4,
-    marginTop: 10,
-    alignSelf: "flex-start",
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: "#E0E6ED",
+    marginTop: 2,
   },
-  campusTagText: {
-    color: "#1E88E5",
+  handoverNoteText: {
+    color: "#455A64",
     fontSize: 11,
-    fontWeight: "600",
+    fontStyle: "italic",
+    flex: 1,
+    lineHeight: 15,
   },
   linesList: {
     gap: 10,
@@ -282,6 +343,12 @@ const styles = StyleSheet.create({
   footSub: {
     color: colors.muted,
     fontSize: 11,
+    marginTop: 1,
+  },
+  footPromo: {
+    color: colors.green,
+    fontSize: 11,
+    fontWeight: "700",
     marginTop: 1,
   },
   total: {

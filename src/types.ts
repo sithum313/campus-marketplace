@@ -41,11 +41,9 @@ export type CampusEvent = {
   venue: string;
   color: string;
   organizer: string;
-  organizerId?: string;
   description?: string;
   /** key of a bundled cover (see covers in data.ts) */
   cover?: string;
-  createdAt?: any;
 };
 
 export type OfferKind = "percent" | "bogo" | "bundle" | "info";
@@ -63,8 +61,6 @@ export type Offer = {
   /** bundle: kind that comes free */
   gives?: ProductKind;
   until?: string;
-  organizerId?: string;
-  createdAt?: any;
 };
 
 export type CartLine = {
@@ -95,39 +91,15 @@ export type Order = {
   /** buyer name (seller view) or seller name (buyer view) */
   party: string;
   eventId?: string;
-  buyerId?: string;
-  buyerName?: string;
-  buyerEmail?: string;
-  sellerId?: string;
-  sellerIds?: string[];
-  createdAt?: any;
-  updatedAt?: any;
 };
 
-export type Message = {
-  id: string;
-  mine: boolean;
-  text: string;
-  at: number;
-  senderId?: string;
-  senderName?: string;
-  senderRole?: "buyer" | "seller";
-};
-
+export type Message = { id: string; mine: boolean; text: string; at: number };
 export type Conversation = {
   id: string;
   itemId: string;
   itemTitle: string;
   seller: string;
-  sellerId?: string;
-  buyer?: string;
-  buyerId?: string;
-  memberIds?: string[];
-  lastMessage?: string;
-  lastMessageAt?: number;
   messages: Message[];
-  createdAt?: any;
-  updatedAt?: any;
 };
 
 export type Filters = {
@@ -142,5 +114,5 @@ export type Filters = {
 
 export type Mode = "buyer" | "seller";
 export type Tab = "Home" | "Messages" | "Search" | "Cart" | "Profile";
-export type SellerTab = "Dashboard" | "Products" | "Events" | "Orders" | "Messages";
+export type SellerTab = "Dashboard" | "Products" | "Events" | "Orders";
 export type SubPage = "discounts" | "events" | "chat" | null;
