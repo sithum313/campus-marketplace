@@ -60,20 +60,19 @@ export function ProductForm({
   const [hasSizes, setHasSizes] = useState(!!initial?.sizes?.length || kindProp === "tshirt");
   const [pickedSizes, setPickedSizes] = useState<string[]>(initial?.sizes || (kindProp === "tshirt" ? shirtSizes : []));
   const [designs, setDesigns] = useState<string[]>(
-    kindProp === "bookmark" || initial?.kind === "bookmark" ? initial?.designs || ["peace", "joy", "sunset", "waves"] : [],
+    initial?.designs || (kindProp === "tshirt" ? ["crew", "laugh", "sunset"] : kindProp === "bookmark" ? ["peace", "joy", "sunset", "waves"] : []),
   );
 
   const toggle = (list: string[], set: (v: string[]) => void, id: string) =>
     set(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
 
-  const d = Math.max(0, Math.min(90, num(discount)));
+  const d = Math.min(90, num(discount));
   const base = num(listPrice);
   const final = Math.round(base * (1 - d / 100) * 100) / 100;
-  const wantsDesigns = !!event && kind === "bookmark";
-  const valid = title.trim().length > 1 && Number.isFinite(base) && base > 0 && (stock === "" || (Number.isInteger(num(stock)) && num(stock) >= 0)) && num(discount) <= 90 && (!wantsDesigns || designs.length > 0);
+  const wantsDesigns = !!event && (kind === "tshirt" || kind === "bookmark");
+  const valid = title.trim().length > 1 && base > 0 && (stock === "" || num(stock) >= 0) && (!wantsDesigns || designs.length > 0);
 
   const submit = () => {
-    if (!valid) return;
     const swatches = hasColors ? PALETTE.filter((c) => pickedColors.includes(c.name)) : [];
     onSubmit({
       title: title.trim(),
@@ -202,7 +201,7 @@ export function ProductForm({
       {wantsDesigns ? (
         <>
           <Label hint={`${designs.length} selected · buyers pick one when ordering`}>
-            Bookmark designs
+            {kind === "bookmark" ? "Bookmark designs" : "T-shirt print designs"}
           </Label>
           <DesignGrid options={designLibrary.map((x) => x.id)} selected={designs} onToggle={(id) => toggle(designs, setDesigns, id)} columns={4} />
         </>

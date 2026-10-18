@@ -13,25 +13,19 @@ export function OrderCard({
   partyLabel: string;
   actions?: ReactNode;
 }) {
-  const lines = Array.isArray(order?.lines) ? order.lines : [];
-  const displayParty =
-    partyLabel === "Buyer"
-      ? order.buyerName || order.party || "Buyer"
-      : order.party || "Seller";
-
   return (
     <View style={styles.card}>
       <View style={styles.top}>
         <View>
           <Text style={styles.id}>{order.id}</Text>
           <Text style={styles.meta}>
-            {order.date} · {partyLabel}: {displayParty}
+            {order.date} · {partyLabel} {order.party}
           </Text>
         </View>
         <StatusPill status={order.status} />
       </View>
       <View style={{ gap: 8, marginTop: 12 }}>
-        {lines.map((line, i) => (
+        {order.lines.map((line, i) => (
           <View key={i} style={styles.line}>
             <View style={{ flex: 1 }}>
               <Text style={styles.name}>
@@ -42,13 +36,10 @@ export function OrderCard({
             <Text style={styles.price}>{money(Math.round(line.qty * line.unitPrice * 100) / 100)}</Text>
           </View>
         ))}
-        {lines.length === 0 ? (
-          <Text style={styles.meta}>Order placed</Text>
-        ) : null}
       </View>
       <View style={styles.foot}>
         <Text style={styles.meta}>Total</Text>
-        <Text style={styles.total}>{money(order.total || 0)}</Text>
+        <Text style={styles.total}>{money(order.total)}</Text>
       </View>
       {actions ? <View style={styles.actions}>{actions}</View> : null}
     </View>

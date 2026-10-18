@@ -15,17 +15,13 @@ export function SellerOrders({
   onStatus: (id: string, status: OrderStatus) => void;
 }) {
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("All");
-  const safeOrders = Array.isArray(orders) ? orders : [];
-  const shown = safeOrders.filter((o) => {
-    if (!o) return false;
-    const st = (o.status || "").toLowerCase();
-    if (filter === "All") return true;
-    if (filter === "New") return st === "placed" || st === "new";
-    if (filter === "Ready") return st.includes("ready");
-    if (filter === "Completed") return st === "completed" || st === "cancelled" || st === "canceled";
-    return true;
-  });
-
+  const shown = orders.filter(
+    (o) =>
+      filter === "All" ||
+      (filter === "New" && o.status === "Placed") ||
+      (filter === "Ready" && o.status === "Ready for pickup") ||
+      (filter === "Completed" && (o.status === "Completed" || o.status === "Cancelled")),
+  );
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <Text style={styles.title}>Orders</Text>
@@ -37,29 +33,23 @@ export function SellerOrders({
       </ScrollView>
       {shown.length === 0 ? <Text style={styles.empty}>No orders here yet.</Text> : null}
       <View style={{ gap: 12 }}>
-        {shown.map((order) => {
-          const st = (order.status || "").toLowerCase();
-          const isPlaced = st === "placed" || st === "new";
-          const isReady = st.includes("ready");
-
-          return (
-            <OrderCard
-              key={order.id}
-              order={order}
-              partyLabel="Buyer"
-              actions={
-                isPlaced ? (
-                  <>
-                    <Button kind="outline" label="Decline" onPress={() => onStatus(order.id, "Cancelled")} style={{ flex: 1, height: 40 }} />
-                    <Button label="Ready for pickup" onPress={() => onStatus(order.id, "Ready for pickup")} style={{ flex: 1.6, height: 40 }} />
-                  </>
-                ) : isReady ? (
-                  <Button label="Mark completed" onPress={() => onStatus(order.id, "Completed")} style={{ flex: 1, height: 40 }} />
-                ) : undefined
-              }
-            />
-          );
-        })}
+        {shown.map((order) => (
+          <OrderCard
+            key={order.id}
+            order={order}
+            partyLabel="Buyer"
+            actions={
+              order.status === "Placed" ? (
+                <>
+                  <Button kind="outline" label="Decline" onPress={() => onStatus(order.id, "Cancelled")} style={{ flex: 1, height: 40 }} />
+                  <Button label="Ready for pickup" onPress={() => onStatus(order.id, "Ready for pickup")} style={{ flex: 1.6, height: 40 }} />
+                </>
+              ) : order.status === "Ready for pickup" ? (
+                <Button label="Mark completed" onPress={() => onStatus(order.id, "Completed")} style={{ flex: 1, height: 40 }} />
+              ) : undefined
+            }
+          />
+        ))}
       </View>
     </ScrollView>
   );

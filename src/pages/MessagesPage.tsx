@@ -8,68 +8,38 @@ export function MessagesPage({
   conversations,
   onOpen,
   onBrowse,
-  isSeller,
-  currentUserId,
 }: {
   conversations: Conversation[];
   onOpen: (id: string) => void;
   onBrowse: () => void;
-  isSeller?: boolean;
-  currentUserId?: string;
 }) {
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-      <Text style={styles.title}>{isSeller ? "Customer inquiries" : "Messages"}</Text>
-      <Text style={styles.sub}>
-        {isSeller ? "Questions from buyers about your items & events" : "Keep campus meetups simple"}
-      </Text>
+      <Text style={styles.title}>Messages</Text>
+      <Text style={styles.sub}>Keep campus meetups simple</Text>
       {conversations.length === 0 ? (
         <EmptyState
-          title={isSeller ? "No inquiries yet" : "Your inbox is quiet"}
-          message={
-            isSeller
-              ? "When campus students ask questions about your products or events, their chats will appear here."
-              : "Tap “Chat” on any product to message its seller. Conversations show up here."
-          }
-          action={isSeller ? "Manage listings" : "Browse listings"}
+          title="Your inbox is quiet"
+          message="Tap “Chat” on any product to message its seller. Conversations show up here."
+          action="Browse listings"
           onAction={onBrowse}
         />
       ) : (
         <View style={{ gap: 10, marginTop: 18 }}>
           {conversations.map((c) => {
-            const isCurrentUserSeller = isSeller !== undefined
-              ? isSeller
-              : Boolean(currentUserId && (c.sellerId === currentUserId || c.sellerId === "demo-seller"));
-            const otherParty = isCurrentUserSeller ? (c.buyer || "Campus student") : (c.seller || "Seller");
-            const last = c.messages.length > 0 ? c.messages[c.messages.length - 1] : null;
-            const isMine = last
-              ? (last.senderRole
-                  ? (isCurrentUserSeller ? last.senderRole === "seller" : last.senderRole === "buyer")
-                  : (last.senderId && currentUserId ? last.senderId === currentUserId : last.mine))
-              : false;
-            const displaySnippet = last
-              ? (isMine ? "You: " : "") + last.text
-              : (c.lastMessage ? c.lastMessage : "Say hello");
-
+            const last = c.messages[c.messages.length - 1];
             return (
               <Pressable key={c.id} style={styles.row} onPress={() => onOpen(c.id)}>
-                <View style={[styles.avatar, isCurrentUserSeller && { backgroundColor: colors.teal }]}>
-                  <Text style={styles.avatarText}>{otherParty.slice(0, 1).toUpperCase()}</Text>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>{c.seller.slice(0, 1).toUpperCase()}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                    <Text style={styles.name}>{otherParty}</Text>
-                    {isCurrentUserSeller ? (
-                      <View style={styles.roleTag}>
-                        <Text style={styles.roleTagText}>Buyer</Text>
-                      </View>
-                    ) : null}
-                  </View>
+                  <Text style={styles.name}>{c.seller}</Text>
                   <Text style={styles.item} numberOfLines={1}>
                     {c.itemTitle}
                   </Text>
                   <Text style={styles.last} numberOfLines={1}>
-                    {displaySnippet}
+                    {last ? (last.mine ? "You: " : "") + last.text : "Say hello"}
                   </Text>
                 </View>
               </Pressable>
@@ -107,6 +77,4 @@ const styles = StyleSheet.create({
   name: { color: colors.ink, fontWeight: "800", fontSize: 15 },
   item: { color: colors.muted, fontSize: 11, marginTop: 1 },
   last: { color: colors.ink, fontSize: 13, marginTop: 4 },
-  roleTag: { backgroundColor: "rgba(133,218,225,0.25)", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
-  roleTagText: { color: colors.ink, fontSize: 10, fontWeight: "700" },
 });
