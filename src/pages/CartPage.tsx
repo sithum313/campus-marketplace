@@ -1482,6 +1482,11 @@ const styles = StyleSheet.create({
     padding: 10,
     borderWidth: 1.5,
     borderColor: colors.line,
+    shadowColor: "#000",
+    shadowOpacity: 0.03,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
   },
   timeSlotCardActive: {
     backgroundColor: "#FFF8F0",
