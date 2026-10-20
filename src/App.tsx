@@ -16,7 +16,7 @@ import {
 import {
   addDoc,
   collection,
-  writeBatch,
+  deleteDoc,
   doc,
   onSnapshot,
   orderBy,
@@ -164,7 +164,7 @@ export default function App() {
   // buyer data
   const [cart, setCart] = useState<CartLine[]>([]);
   const [orders, setOrders] = useState<Order[]>(() => {
-    if (firebaseConfigured) return [];
+    if (firebaseConfigured) return []; // real orders come only from Firestore
     const local = getStoredOrders();
     return local.length > 0 ? local : seedOrders;
   });
@@ -260,29 +260,27 @@ export default function App() {
       q,
       (snapshot) => {
         const list = snapshot.docs.map((d) => ({ ...d.data(), id: d.id }) as Order);
-        list.sort((a, b) => {
-          const tA = a.createdAt?.toMillis?.() || 0;
-          const tB = b.createdAt?.toMillis?.() || 0;
-          return tB - tA;
-        });
-        setOrders(list);
+        setOrders(list.sort(newestFirst));
       },
       (error) => flash(`Could not load your orders: ${error.message}`),
     );
   }, [user?.uid]);
 
-  // Only show orders whose sellerId belongs to the signed-in seller.
+  // Sync Seller Orders from Firestore: orders where I am the seller
   useEffect(() => {
-    if (!db || !user) { setSellerOrders([]); return; }
+    if (!db) return;
+    if (!user) { setSellerOrders([]); return; }
     const q = query(collection(db, "orders"), where("sellerId", "==", user.uid));
-    return onSnapshot(q, (snapshot) => {
-      const list = snapshot.docs.map((entry) => {
-        const data = entry.data();
-        return { ...data, id: entry.id, party: data.buyerName || "Buyer" } as Order;
-      });
-      list.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
-      setSellerOrders(list);
-    }, (error) => console.warn("Could not load seller orders:", error));
+    return onSnapshot(
+      q,
+      (snapshot) => {
+        const list = snapshot.docs.map(
+          (d) => ({ ...d.data(), id: d.id, party: d.data().buyerName || "Buyer" }) as Order,
+        );
+        setSellerOrders(list.sort(newestFirst));
+      },
+      (error) => flash(`Could not load seller orders: ${error.message}`),
+    );
   }, [user?.uid]);
 
   // Sync user conversations (both where user is buyer or seller)
@@ -460,30 +458,23 @@ export default function App() {
       flash("Some cart items are unavailable or exceed stock. Please review your cart.");
       return;
     }
-    // Create a separate order for each seller. Do not assign an order to the buyer.
-    const grouped = new Map<string, typeof rows>();
-    for (const row of rows) {
-      const sellerId = row.item.sellerId;
-      if (!sellerId && db && user) {
-        flash(`Seller account is missing for ${row.item.title}. Order not placed.`);
-        return;
-      }
-      const key = sellerId || "demo-seller";
-      grouped.set(key, [...(grouped.get(key) || []), row]);
+
+    // One order per seller, so each seller only receives their own products.
+    const bySeller = new Map<string, typeof rows>();
+    for (const r of rows) {
+      const sid = r.item.sellerId || "demo-seller";
+      bySeller.set(sid, [...(bySeller.get(sid) || []), r]);
     }
-    const promoDiscount = details?.promoDiscount || 0;
     const newOrders: Order[] = [];
-    for (const [sellerId, sellerRows] of grouped) {
+    bySeller.forEach((sellerRows, sellerId) => {
       const eventIds = Array.from(new Set(sellerRows.map((r) => r.item.eventId)));
-      const sellerTotal = priceCart(sellerRows.map((r) => r.line), items, offers).total;
-      const share = total > 0 ? promoDiscount * sellerTotal / total : 0;
       newOrders.push({
-        id: `ORD-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`.toUpperCase(),
+        id: newOrderId(),
         date: today(),
-        status: "Placed",
+        status: "Placed" as OrderStatus,
         party: sellerRows[0].item.seller || "Seller",
         eventId: eventIds.length === 1 ? eventIds[0] : undefined,
-        total: Math.max(0, Math.round((sellerTotal - share) * 100) / 100),
+        total: priceCart(sellerRows.map((r) => r.line), items, offers).total,
         lines: sellerRows.map((r) => ({
           title: r.item.title,
           qty: r.line.qty,
@@ -495,16 +486,16 @@ export default function App() {
         buyerName: ownerName,
         buyerEmail: user?.email || "",
         sellerId,
-        meetupSpot: details?.meetupSpotName || "Campus Safe Handover",
-        meetupTime: details?.meetupTime,
-        notes: details?.notes,
-        promoCode: details?.promoCode,
-        discount: share,
       });
-    }
+    });
+
+    // Total quantity bought per product (the same product can be in the cart twice with different options)
+    const qtyById = new Map<string, number>();
+    for (const r of rows) qtyById.set(r.item.id, (qtyById.get(r.item.id) || 0) + r.line.qty);
+    const boughtItems = Array.from(new Set(rows.map((r) => r.item)));
 
     if (db && user) {
-      // Only report success after every seller's order is stored successfully.
+      // Save to Firestore first. If this fails, tell the buyer and keep the cart.
       try {
         const batch = writeBatch(db);
         for (const order of newOrders) {
@@ -519,32 +510,31 @@ export default function App() {
         flash(error instanceof Error ? `Order not sent: ${error.message}` : "Order not sent");
         return;
       }
-      // The buyer and seller Firestore listeners receive their respective orders.
-      for (const row of rows.filter((row, index, all) => all.findIndex((other) => other.item.id === row.item.id) === index)) {
-        if (!cloudItems.some((item) => item.id === row.item.id)) continue;
-        const item = row.item;
-        const qty = cart.filter((line) => line.itemId === item.id).reduce((sum, line) => sum + line.qty, 0);
+      // Update stock on the seller's listing (the order is already saved)
+      for (const item of boughtItems) {
+        if (!cloudItems.some((ci) => ci.id === item.id)) continue;
+        const qty = qtyById.get(item.id) || 0;
+        const nextStock = item.stock === undefined ? undefined : Math.max(0, item.stock - qty);
         try {
           await updateDoc(doc(db, "listings", item.id), {
             sold: (item.sold || 0) + qty,
-            ...(item.stock === undefined ? {} : {
-              stock: Math.max(0, item.stock - qty),
-              soldOut: item.stock - qty <= 0,
-            }),
+            ...(nextStock === undefined ? {} : { stock: nextStock, soldOut: nextStock === 0 }),
             updatedAt: serverTimestamp(),
           });
         } catch (error) {
-          console.warn("Could not update listing stock:", error);
+          console.warn("Could not update stock:", error);
         }
       }
+      // The order listeners above show the new orders to the buyer and to each seller.
     } else {
-      setOrders((previous) => {
-        const next = [...newOrders, ...previous];
+      // Demo mode (no Firebase): keep everything on this device
+      setOrders((o) => {
+        const next = [...newOrders, ...o];
         setStoredOrders(next);
         return next;
       });
-      setSellerOrders((previous) => {
-        const next = [...newOrders.map((order) => ({ ...order, party: ownerName })), ...previous];
+      setSellerOrders((o) => {
+        const next = [...newOrders.map((x) => ({ ...x, party: ownerName })), ...o];
         setStoredSellerOrders(next);
         return next;
       });
@@ -565,10 +555,11 @@ export default function App() {
       }
       return next;
     });
+
     setCart([]);
     setProfileTab((p) => ({ tab: "ongoing", nonce: p.nonce + 1 }));
     goTab("Profile");
-    flash(`${newOrders.length} order${newOrders.length === 1 ? "" : "s"} placed`);
+    flash(`Order ${newOrders.map((o) => o.id).join(", ")} placed`);
   };
 
   const cancelOrder = async (id: string) => {
@@ -677,7 +668,57 @@ export default function App() {
     setTab("Messages");
   };
 
-  /* ---------- auth (unchanged) ---------- */
+  const sendMessage = async (text: string, targetChatId?: string) => {
+    const cleanText = text.trim();
+    if (!cleanText) return;
+    const activeId = targetChatId || chatId;
+    if (!activeId) return;
+
+    const currentRole: "buyer" | "seller" = mode === "seller" ? "seller" : "buyer";
+
+    if (db && user && !activeId.startsWith("c-")) {
+      try {
+        await addDoc(collection(db, "conversations", activeId, "messages"), {
+          senderId: user.uid,
+          senderName: ownerName,
+          senderRole: currentRole,
+          text: cleanText,
+          createdAt: serverTimestamp(),
+        });
+        await updateDoc(doc(db, "conversations", activeId), {
+          lastMessage: cleanText,
+          lastMessageAt: Date.now(),
+          updatedAt: serverTimestamp(),
+        });
+      } catch (e) {
+        flash(e instanceof Error ? e.message : "Could not send message");
+      }
+    } else {
+      setConversations((list) =>
+        list.map((c) =>
+          c.id === activeId
+            ? {
+                ...c,
+                lastMessage: cleanText,
+                lastMessageAt: Date.now(),
+                messages: [
+                  ...c.messages,
+                  {
+                    id: String(Date.now()),
+                    mine: true,
+                    senderId: ownerId,
+                    senderName: ownerName,
+                    senderRole: currentRole,
+                    text: cleanText,
+                    at: Date.now(),
+                  },
+                ],
+              }
+            : c,
+        ),
+      );
+    }
+  };
 
   const signInWithEmail = async (email: string, password: string) => {
     if (!auth) throw new Error("Firebase is not configured yet.");
@@ -919,7 +960,6 @@ export default function App() {
     return (
       <OnboardingPage
         onDone={() => {
-          setStoredOnboarded();
           setOnboarded(true);
           setStoredOnboarded();
           setAuthOpen(true);
@@ -1004,17 +1044,19 @@ export default function App() {
           {tab === "Messages" && subPage === "chat" && activeChat && (
             <ChatPage
               conversation={activeChat}
-              onSend={sendMessage}
-              onBack={() => setSubPage(null)}
-              currentUserId={user?.uid}
-              isSeller={mode === "seller"}
+              currentUserId={ownerId}
+              isSeller={false}
+              onSend={(text) => sendMessage(text, activeChat.id)}
+              onBack={() => {
+                setChatId(null);
+                setSubPage(null);
+              }}
             />
           )}
           {tab === "Messages" && !(subPage === "chat" && activeChat) && (
             <MessagesPage
-              conversations={conversations}
-              currentUserId={user?.uid}
-              isSeller={mode === "seller"}
+              conversations={displayBuyerConversations}
+              currentUserId={ownerId}
               onOpen={(id) => {
                 setChatId(id);
                 setSubPage("chat");
