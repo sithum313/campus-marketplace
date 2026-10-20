@@ -99,9 +99,29 @@ export type Order = {
   buyerName?: string;
   buyerEmail?: string;
   sellerId?: string;
-  sellerIds?: string[];
+  meetupSpot?: string;
+  meetupTime?: string;
+  notes?: string;
+  promoCode?: string;
+  discount?: number;
   createdAt?: any;
   updatedAt?: any;
+};
+
+export type MessageType = "text" | "meetup" | "offer" | "system";
+
+export type MeetupDetails = {
+  location: string;
+  spotId?: string;
+  time: string;
+  status: "proposed" | "accepted" | "declined";
+};
+
+export type OfferDetails = {
+  amount: number;
+  originalPrice?: number;
+  status: "pending" | "accepted" | "declined" | "countered";
+  counterAmount?: number;
 };
 
 export type Message = {
@@ -112,12 +132,18 @@ export type Message = {
   senderId?: string;
   senderName?: string;
   senderRole?: "buyer" | "seller";
+  type?: MessageType;
+  meetup?: MeetupDetails;
+  offer?: OfferDetails;
+  reaction?: string;
 };
 
 export type Conversation = {
   id: string;
   itemId: string;
   itemTitle: string;
+  itemPrice?: number;
+  itemImage?: string;
   seller: string;
   sellerId?: string;
   buyer?: string;
@@ -126,6 +152,10 @@ export type Conversation = {
   lastMessage?: string;
   lastMessageAt?: number;
   messages: Message[];
+  unreadCount?: number;
+  pinned?: boolean;
+  activeMeetup?: MeetupDetails;
+  activeOffer?: OfferDetails;
   createdAt?: any;
   updatedAt?: any;
 };
