@@ -2,31 +2,33 @@ import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { AppIcon } from "../components/AppIcon";
 import { Button, page } from "../components/ui";
 import { colors, money } from "../theme";
-import { Listing, Offer, Order } from "../types";
+import { Conversation, Listing, Offer, Order } from "../types";
 
 export function SellerDashboard({
-  name,
-  products,
-  eventProducts,
-  offers,
-  orders,
+  name = "Seller",
+  products = [],
+  eventProducts = [],
+  offers = [],
+  orders = [],
+  conversations = [],
   onAddProduct,
   onCreateEvent,
   onOrders,
+  onMessages,
 }: {
-  name: string;
-  products: Listing[];
-  eventProducts: Listing[];
-  offers: Offer[];
-  orders: Order[];
+  name?: string;
+  products?: Listing[];
+  eventProducts?: Listing[];
+  offers?: Offer[];
+  orders?: Order[];
+  conversations?: Conversation[];
   onAddProduct: () => void;
   onCreateEvent: () => void;
   onOrders: () => void;
+  onMessages?: () => void;
 }) {
   const safeOrders = orders || [];
-  const safeProducts = (products || []).filter(
-    (p, idx, arr) => p?.id && arr.findIndex((x) => x?.id === p.id) === idx,
-  );
+  const safeProducts = products || [];
   const safeConversations = conversations || [];
   const safeOffers = offers || [];
   const safeName = (name || "Seller").trim() || "Seller";
@@ -43,18 +45,18 @@ export function SellerDashboard({
     .reduce((s, o) => s + (Number(o?.total) || 0), 0);
   const activeConversations = safeConversations.length;
   const stats = [
-    { label: "Products live", value: String(safeProducts.filter((p) => !p?.soldOut && p?.stock !== 0).length), icon: "cube-outline", tint: colors.teal },
+    { label: "Products live", value: String(safeProducts.filter((p) => !p?.soldOut).length), icon: "cube-outline", tint: colors.teal },
     { label: "New orders", value: String(newOrders), icon: "notifications-outline", tint: colors.yellow },
-    { label: "Revenue", value: money(Math.round(revenue * 100) / 100), icon: "cash-outline", tint: colors.pink },
-    { label: "Tickets sold", value: String(tickets), icon: "ticket-outline", tint: colors.blue },
+    { label: "Inquiries", value: String(activeConversations), icon: "mail-outline", tint: colors.pink },
+    { label: "Revenue", value: money(Math.round(revenue * 100) / 100), icon: "cash-outline", tint: colors.blue },
   ];
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <View style={styles.hero}>
         <View style={{ flex: 1 }}>
           <Text style={styles.hi}>Seller space</Text>
-          <Text style={styles.heroTitle}>Sell with{"\n"}ease, {name.split(" ")[0]}</Text>
-          <Text style={styles.heroSub}>List products, run event sales and manage orders in one place.</Text>
+          <Text style={styles.heroTitle}>Sell with{"\n"}ease, {safeName.split(" ")[0]}</Text>
+          <Text style={styles.heroSub}>List products, chat with buyers, and fulfill orders in one place.</Text>
         </View>
         <Image source={require("../../assets/onboarding/sell.png")} style={styles.art} resizeMode="contain" />
       </View>
@@ -77,12 +79,17 @@ export function SellerDashboard({
       <Text style={styles.section}>Needs your attention</Text>
       <View style={styles.card}>
         <Text style={styles.cardText}>
-          {newOrders ? `${newOrders} new order${newOrders === 1 ? "" : "s"} waiting for you.` : "No new orders right now."}
+          {newOrders ? `${newOrders} new order${newOrders === 1 ? "" : "s"} waiting for you.` : "No pending orders."}
         </Text>
         <Text style={styles.cardSub}>
-          {offers.length} active event offer{offers.length === 1 ? "" : "s"} · {eventProducts.length} event products
+          {activeConversations} buyer inquiry{activeConversations === 1 ? "" : "s"} · {safeOffers.length} event offers
         </Text>
-        <Button kind="soft" label="Open orders" onPress={onOrders} style={{ marginTop: 12, height: 42 }} />
+        <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+          <Button kind="soft" label="Open orders" onPress={onOrders} style={{ flex: 1, height: 42 }} />
+          {onMessages ? (
+            <Button kind="outline" label="View messages" onPress={onMessages} style={{ flex: 1, height: 42 }} />
+          ) : null}
+        </View>
       </View>
     </ScrollView>
   );

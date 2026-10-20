@@ -50,7 +50,7 @@ export function ProductForm({
   const [condition, setCondition] = useState(initial?.condition || "New");
   const [listPrice, setListPrice] = useState(initial ? String(listPriceOf(initial)) : "");
   const [discount, setDiscount] = useState(initial?.discountPercent ? String(initial.discountPercent) : "");
-  const [stock, setStock] = useState(initial?.stock !== undefined ? String(initial.stock) : "1");
+  const [stock, setStock] = useState(initial?.stock !== undefined ? String(initial.stock) : "");
   const [place, setPlace] = useState(initial?.campus || campusDefault);
   const [image, setImage] = useState(initial?.image || "");
   const [hasColors, setHasColors] = useState(!!initial?.colors?.length || kindProp === "tshirt" || kindProp === "cap");
@@ -60,25 +60,21 @@ export function ProductForm({
   const [hasSizes, setHasSizes] = useState(!!initial?.sizes?.length || kindProp === "tshirt");
   const [pickedSizes, setPickedSizes] = useState<string[]>(initial?.sizes || (kindProp === "tshirt" ? shirtSizes : []));
   const [designs, setDesigns] = useState<string[]>(
-    initial?.designs || (kindProp === "tshirt" ? ["crew", "laugh", "sunset"] : kindProp === "bookmark" ? ["peace", "joy", "sunset", "waves"] : []),
+    kindProp === "bookmark" || initial?.kind === "bookmark" ? initial?.designs || ["peace", "joy", "sunset", "waves"] : [],
   );
-
-  const [submitting, setSubmitting] = useState(false);
 
   const toggle = (list: string[], set: (v: string[]) => void, id: string) =>
     set(list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
 
-  const d = Math.min(90, num(discount));
+  const d = Math.max(0, Math.min(90, num(discount)));
   const base = num(listPrice);
   const final = Math.round(base * (1 - d / 100) * 100) / 100;
-  const wantsDesigns = !!event && (kind === "tshirt" || kind === "bookmark");
-  const valid = title.trim().length > 1 && base > 0 && (stock === "" || num(stock) >= 0) && (!wantsDesigns || designs.length > 0);
+  const wantsDesigns = !!event && kind === "bookmark";
+  const valid = title.trim().length > 1 && Number.isFinite(base) && base > 0 && (stock === "" || (Number.isInteger(num(stock)) && num(stock) >= 0)) && num(discount) <= 90 && (!wantsDesigns || designs.length > 0);
 
   const submit = () => {
-    if (!valid || submitting) return;
-    setSubmitting(true);
+    if (!valid) return;
     const swatches = hasColors ? PALETTE.filter((c) => pickedColors.includes(c.name)) : [];
-    const parsedStock = stock === "" ? 1 : Math.max(0, Math.floor(num(stock)));
     onSubmit({
       title: title.trim(),
       description: description.trim() || (event ? `${kindLabel(kind)} for ${event.title}.` : "Listed by a student on campus."),
@@ -87,9 +83,9 @@ export function ProductForm({
       price: final,
       listPrice: d > 0 ? base : undefined,
       discountPercent: d > 0 ? d : undefined,
-      stock: parsedStock,
+      stock: stock === "" ? undefined : Math.floor(num(stock)),
       sold: initial?.sold ?? 0,
-      soldOut: parsedStock === 0 ? true : initial?.soldOut && parsedStock > 0 ? false : !!initial?.soldOut,
+      soldOut: stock !== "" && num(stock) === 0 ? true : initial?.soldOut && num(stock) > 0 ? false : initial?.soldOut,
       campus: event ? "Event organizers" : place.trim() || campusDefault,
       image: image.trim() || undefined,
       icon: kindIcon(event ? kind : undefined) || initial?.icon,
@@ -175,8 +171,8 @@ export function ProductForm({
         </Text>
       ) : null}
 
-      <Label hint="Quantity available (defaults to 1). Set 0 to mark sold out.">Quantity in stock</Label>
-      <Field placeholder="e.g. 1" keyboardType="numeric" value={stock} onChangeText={(v) => setStock(digits(v).split(".")[0])} />
+      <Label hint="Leave empty for unlimited. Set 0 to mark sold out.">Quantity in stock</Label>
+      <Field placeholder="e.g. 50" keyboardType="numeric" value={stock} onChangeText={(v) => setStock(digits(v).split(".")[0])} />
 
       {!event ? (
         <>
@@ -206,7 +202,7 @@ export function ProductForm({
       {wantsDesigns ? (
         <>
           <Label hint={`${designs.length} selected · buyers pick one when ordering`}>
-            {kind === "bookmark" ? "Bookmark designs" : "T-shirt print designs"}
+            Bookmark designs
           </Label>
           <DesignGrid options={designLibrary.map((x) => x.id)} selected={designs} onToggle={(id) => toggle(designs, setDesigns, id)} columns={4} />
         </>
@@ -214,7 +210,7 @@ export function ProductForm({
 
       <View style={styles.footer}>
         <Button kind="outline" label="Cancel" onPress={onCancel} style={{ flex: 1 }} />
-        <Button label={initial ? "Save changes" : "Publish"} disabled={!valid || submitting} onPress={submit} style={{ flex: 1.5 }} />
+        <Button label={initial ? "Save changes" : "Publish"} disabled={!valid} onPress={submit} style={{ flex: 1.5 }} />
       </View>
     </ScrollView>
   );

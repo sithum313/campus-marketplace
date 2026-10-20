@@ -17,17 +17,13 @@ export function SellerProducts({
   onToggleSoldOut: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
-  const safeProducts = (products || []).filter(
-    (p, idx, arr) => p?.id && arr.findIndex((x) => x?.id === p.id) === idx,
-  );
-
   return (
     <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       <Text style={styles.title}>My products</Text>
       <Text style={styles.sub}>Items you are selling on campus</Text>
       <Button icon="add-circle-outline" label="Add a product" onPress={onAdd} style={{ marginTop: 18 }} />
 
-      {safeProducts.length === 0 ? (
+      {products.length === 0 ? (
         <View style={styles.empty}>
           <Image source={require("../../assets/onboarding/sell.png")} style={styles.art} resizeMode="contain" />
           <Text style={styles.emptyTitle}>Nothing listed yet</Text>
@@ -35,7 +31,7 @@ export function SellerProducts({
         </View>
       ) : (
         <View style={{ gap: 12, marginTop: 18 }}>
-          {safeProducts.map((item) => {
+          {products.map((item) => {
             const out = item.soldOut || item.stock === 0;
             return (
               <View key={item.id} style={styles.card}>
