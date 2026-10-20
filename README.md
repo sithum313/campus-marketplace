@@ -1,69 +1,110 @@
-# Campus Marketplace
+# UNIZON – Campus Marketplace
 
-Expo SDK 57 React Native app for buying and selling items within a campus community.
+**Emerging Trends Course Unit | DCS-CSC2023 | University of Jaffna**
 
-## Run locally
+UNIZON is a campus marketplace application developed as a group enhancement of the existing [Campus Marketplace](https://github.com/webtegy/campus-marketplace) project. It aims to make it easier for university students to discover, list, and exchange products through a convenient, responsive interface.
 
-Expo SDK 57 requires Node 22.13 or newer.
+## Project Objectives
 
-```bash
-cp .env.example .env
-npm install
-npm run web
-```
+- Improve the existing marketplace experience for students.
+- Support product discovery through search, category, and price filtering.
+- Improve seller and buyer workflows and the overall interface.
+- Integrate authentication and marketplace data using Firebase.
+- Demonstrate collaborative development through GitHub.
 
-The app runs in demo mode until Firebase values are added to `.env`.
+## Features
 
-## Firebase setup
+The team's work focuses on the following areas:
 
-1. Create a Firebase project and register a Web app.
-2. Enable **Email/Password** and **Google** under Authentication > Sign-in method. Add `localhost` and your deployed domain to Authentication > Settings > Authorized domains as needed.
-3. Create a Cloud Firestore database.
-4. Copy the Web app configuration into `.env` using `.env.example`.
-5. Deploy `firestore.rules` with the Firebase CLI or paste them into the Firestore Rules tab.
+- **Authentication and profiles:** Sign-up, sign-in, and user profiles.
+- **Product listings:** Browse listings, view product details, and manage seller listings.
+- **Search and filtering:** Search for products and filter by product attributes and price.
+- **Favorites:** Save and remove favorite listings.
+- **Cart and orders:** Shopping cart design and buyer ordering workflow.
+- **Buyer–seller communication:** Chatting feature work.
+- **Seller dashboard:** Seller-focused listing management interface.
+- **UI/UX:** Improved onboarding, navigation, layouts, and visual consistency.
+- **Mobile responsiveness:** Layout improvements for smaller screens.
+- **Firebase integration:** Authentication and Cloud Firestore for supported application data.
 
-The app uses Cloud Firestore collections:
+> Feature descriptions summarize the team's work areas. Confirm that each feature works in the final submitted build before describing it as complete in the demo.
 
-- `listings`: public reads, authenticated seller-owned creates and edits.
-- `users/{uid}` and `users/{uid}/saved/{listingId}`: owner-only access for profiles and favorites.
-- `conversations` and subcollection `messages`: multi-user real-time chat between buyers and sellers with member-only security rules.
-- `orders`: real-time order placement, status tracking (Placed, Ready for pickup, Completed, Cancelled) for both buyers and sellers.
-- `events` & `offers`: campus events and promotional deals created and managed by student organizers.
+## Team Members and Contributions
 
-The client Firebase configuration is intentionally public. Access control belongs in Authentication, Firestore Rules, and App Check; never put Admin SDK credentials in this app.
+| GitHub username | Assigned contribution |
+| --- | --- |
+| [sithum313](https://github.com/sithum313) | Price and product filtering |
+| [kp889-kp](https://github.com/kp889-kp) | Buyer–seller chatting |
+| [neha0831](https://github.com/neha0831) | UI/UX design |
+| [MohamedMihlarMaryam](https://github.com/MohamedMihlarMaryam) | Mobile responsiveness |
+| [imantha35](https://github.com/imantha35) | Cart design |
+| [SasangaAkash](https://github.com/SasangaAkash) | Seller dashboard |
 
-## Current product flows
+Each team member was assigned a specific area of development. We used GitHub branches, commits, and integration work to collaborate on the final application.
 
-**Buyer mode**
-- Search with filters: min/max price, category, condition, campus, discounted-only and sorting.
-- Product sheet: short description, heart (save), chat with seller, add to cart.
-- Event merch: colour, size and design pickers (all bookmark / t-shirt designs shown as a grid).
-- Event offers and notices (percent off, buy-one-get-one, free gift, plain notices) applied in the cart.
-- Profile: cart shortcut, ongoing orders, past orders and saved items.
-- Real-time messages with sellers with auto-scrolling, quick suggestions, and instant Firestore delivery.
+## Technologies
 
-**Seller mode** (switch in the top-right corner)
-- Dashboard: live metrics (products live, new orders, inquiries, revenue) and shortcuts.
-- Product management: add / edit / toggle sold out / delete with Firestore persistence.
-- Event organizer space: create campus events, sell tickets / t-shirts / caps / bookmarks, and publish promotional offers.
-- Customer inquiries & messages: dedicated Messages inbox tab for sellers to receive and respond to buyer inquiries in real-time.
-- Orders management: track and advance fulfillment statuses in real-time.
+- React / React Native with Expo (existing project stack)
+- JavaScript / TypeScript
+- Firebase Authentication
+- Cloud Firestore
+- Git and GitHub
+- GitHub Desktop
+- Visual Studio Code
 
-Email/password sign-up and sign-in use Firebase Authentication with persistent session storage across webpage reloads. Listing updates, orders, chats, events, and offers are all connected to Cloud Firestore.
+## Getting Started
 
-## Verification checklist
+### Prerequisites
 
-- Test both buyer and seller modes, stock limits, filters, checkout, editing and deletion.
-- Verify that reload retains user authentication without prompting sign-in or repeating onboarding.
-- Test buyer-seller messaging: open an item as a buyer, send a message, switch to Seller mode (or log in with the seller account) and view/reply from the Seller Messages tab.
+- Node.js and npm
+- Git
+- A Firebase project configured for the application
 
-### Firebase verification checklist
+### Installation
 
-1. Copy `.env.example` to `.env` and fill in the **Web app** Firebase config from your own Firebase project. Never use service account private keys here.
-2. In Firebase Console enable Email/Password sign-in and create Firestore.
-3. Deploy `firestore.rules` using Firebase CLI (`firebase deploy --only firestore:rules`) or paste rules in the Firebase console.
-4. Run `npm install`, `npm run web`, and test signing up with a new email.
-5. Sign out, sign in again, publish a product, refresh, and confirm it persists.
-6. Save a product, refresh, and confirm it remains saved under the same account.
-7. Test seller ownership using two separate accounts.
-8. Complete the team's real names, contributions, GitHub history, and video demo.
+1. Clone the team repository:
+
+   ```bash
+   git clone https://github.com/sithum313/campus-marketplace.git
+   cd campus-marketplace
+   ```
+
+2. Install dependencies:
+
+   ```bash
+   npm install
+   ```
+
+3. Create a `.env` file using the project's environment variable template, if provided. Supply the Firebase configuration values for your own project. **Do not commit private keys or secrets.**
+
+4. Start the application using the script configured in `package.json`. For an Expo-based setup, this is commonly:
+
+   ```bash
+   npx expo start --web
+   ```
+
+5. Open the local development URL shown in the terminal.
+
+> The exact run command and required environment variable names should be verified against the final project's `package.json` and Firebase configuration.
+
+## Testing and Demonstration
+
+The final demonstration should show the user journey from onboarding and authentication through product discovery, seller listing management, filtering, and the team's other working features. It should also include a brief technical overview and the GitHub contribution history.
+
+## GitHub Collaboration
+
+Team members worked on assigned features using GitHub. The repository's branches, commit history, and pull requests (where used) document the development process.
+
+**Team repository:** https://github.com/sithum313/campus-marketplace
+
+**Original repository:** https://github.com/webtegy/campus-marketplace
+
+## Assignment Deliverables
+
+- Final working application in the team GitHub repository
+- README documentation
+- A 5–8 minute recorded project demonstration
+
+## Acknowledgement
+
+This project builds upon the existing Campus Marketplace codebase provided for the Emerging Trends group assignment. We acknowledge the original project authors and the Department of Computer Science, University of Jaffna, for the learning opportunity.
