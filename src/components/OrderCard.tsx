@@ -1,8 +1,8 @@
 import { ReactNode } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { AppIcon } from "./AppIcon";
 import { colors, money } from "../theme";
-import { Order, OrderStatus } from "../types";
+import { Order } from "../types";
+import { StatusPill } from "./ui";
 
 export function OrderCard({
   order,
@@ -19,151 +19,37 @@ export function OrderCard({
       ? order.buyerName || order.party || "Buyer"
       : order.party || "Seller";
 
-  const getStatusConfig = (status: OrderStatus) => {
-    switch (status) {
-      case "Placed":
-        return {
-          bg: "#E8F0FE",
-          text: "#1E88E5",
-          icon: "time-outline",
-          label: "Order Placed",
-        };
-      case "Ready for pickup":
-        return {
-          bg: "#FFF8E1",
-          text: "#F57C00",
-          icon: "cube-outline",
-          label: "Ready for Handover",
-        };
-      case "Completed":
-        return {
-          bg: "#E8F8F0",
-          text: colors.green,
-          icon: "checkmark-circle-outline",
-          label: "Handed Over",
-        };
-      case "Cancelled":
-        return {
-          bg: "#FDECEC",
-          text: colors.red,
-          icon: "close-circle-outline",
-          label: "Cancelled",
-        };
-      default:
-        return {
-          bg: "#F0F2F5",
-          text: colors.ink,
-          icon: "information-circle-outline",
-          label: status,
-        };
-    }
-  };
-
-  const statusConfig = getStatusConfig(order.status);
-  const totalItems = lines.reduce((acc, l) => acc + (l.qty || 1), 0);
-
   return (
     <View style={styles.card}>
-      {/* Top Header */}
       <View style={styles.top}>
         <View>
-          <View style={styles.idRow}>
-            <Text style={styles.id}>{order.id}</Text>
-            <View style={styles.itemsCountBadge}>
-              <Text style={styles.itemsCountText}>
-                {totalItems} {totalItems === 1 ? "item" : "items"}
-              </Text>
-            </View>
-          </View>
+          <Text style={styles.id}>{order.id}</Text>
           <Text style={styles.meta}>
-            {order.date} · {partyLabel}: <Text style={{ fontWeight: "700" }}>{displayParty}</Text>
+            {order.date} · {partyLabel}: {displayParty}
           </Text>
         </View>
-
-        <View style={[styles.statusPill, { backgroundColor: statusConfig.bg }]}>
-          <AppIcon name={statusConfig.icon} size={13} color={statusConfig.text} />
-          <Text style={[styles.statusText, { color: statusConfig.text }]}>
-            {statusConfig.label}
-          </Text>
-        </View>
+        <StatusPill status={order.status} />
       </View>
-
-      {/* Campus Handover Logistics Card */}
-      <View style={styles.handoverCard}>
-        <View style={styles.handoverRow}>
-          <AppIcon name="location-outline" size={13} color="#1E88E5" />
-          <Text style={styles.handoverSpotText} numberOfLines={1}>
-            <Text style={styles.handoverLabel}>Meetup: </Text>
-            {order.meetupSpot || "On-Campus Peer Meetup"}
-          </Text>
-        </View>
-
-        {order.meetupTime ? (
-          <View style={styles.handoverRow}>
-            <AppIcon name="time-outline" size={13} color="#E65100" />
-            <Text style={styles.handoverTimeText} numberOfLines={1}>
-              <Text style={styles.handoverLabel}>Timing: </Text>
-              {order.meetupTime}
-            </Text>
-          </View>
-        ) : null}
-
-        {order.notes ? (
-          <View style={styles.handoverNoteBox}>
-            <AppIcon name="chatbubble-ellipses-outline" size={12} color="#546E7A" />
-            <Text style={styles.handoverNoteText} numberOfLines={2}>
-              "{order.notes}"
-            </Text>
-          </View>
-        ) : null}
-      </View>
-
-      {/* Line Items */}
-      <View style={styles.linesList}>
+      <View style={{ gap: 8, marginTop: 12 }}>
         {lines.map((line, i) => (
           <View key={i} style={styles.line}>
-            <View style={styles.qtyBadge}>
-              <Text style={styles.qtyText}>{line.qty}×</Text>
-            </View>
-
             <View style={{ flex: 1 }}>
-              <Text style={styles.name} numberOfLines={2}>
-                {line.title}
+              <Text style={styles.name}>
+                {line.qty} × {line.title}
               </Text>
-              {line.variant ? (
-                <View style={styles.variantBadge}>
-                  <Text style={styles.variantText}>{line.variant}</Text>
-                </View>
-              ) : null}
+              {line.variant ? <Text style={styles.meta}>{line.variant}</Text> : null}
             </View>
-
-            <Text style={styles.price}>
-              {money(Math.round(line.qty * line.unitPrice * 100) / 100)}
-            </Text>
+            <Text style={styles.price}>{money(Math.round(line.qty * line.unitPrice * 100) / 100)}</Text>
           </View>
         ))}
-
         {lines.length === 0 ? (
-          <Text style={styles.emptyText}>Order placed</Text>
+          <Text style={styles.meta}>Order placed</Text>
         ) : null}
       </View>
-
-      {/* Foot Summary */}
       <View style={styles.foot}>
-        <View>
-          <Text style={styles.footMeta}>Order Total</Text>
-          {order.promoCode && order.discount ? (
-            <Text style={styles.footPromo}>
-              Voucher {order.promoCode} applied (−{money(order.discount)})
-            </Text>
-          ) : (
-            <Text style={styles.footSub}>Includes student discounts</Text>
-          )}
-        </View>
+        <Text style={styles.meta}>Total</Text>
         <Text style={styles.total}>{money(order.total || 0)}</Text>
       </View>
-
-      {/* Action Buttons */}
       {actions ? <View style={styles.actions}>{actions}</View> : null}
     </View>
   );
@@ -173,195 +59,25 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: "#FFF",
     borderRadius: 18,
-    padding: 16,
+    padding: 14,
     borderWidth: 1,
     borderColor: colors.line,
-    shadowColor: "#000",
-    shadowOpacity: 0.03,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
-    marginBottom: 12,
   },
-  top: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
-  idRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  id: {
-    color: colors.ink,
-    fontWeight: "900",
-    fontSize: 15,
-    letterSpacing: 0.5,
-  },
-  itemsCountBadge: {
-    backgroundColor: "#F0F4F8",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  itemsCountText: {
-    color: colors.muted,
-    fontSize: 11,
-    fontWeight: "600",
-  },
-  meta: {
-    color: colors.muted,
-    fontSize: 12,
-    marginTop: 4,
-  },
-  statusPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statusText: {
-    fontSize: 11.5,
-    fontWeight: "700",
-  },
-  handoverCard: {
-    backgroundColor: "#F4F8FD",
-    borderRadius: 12,
-    padding: 10,
-    marginTop: 10,
-    borderWidth: 1,
-    borderColor: "#E1EDFB",
-    gap: 6,
-  },
-  handoverRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  handoverLabel: {
-    fontWeight: "700",
-    color: colors.ink,
-  },
-  handoverSpotText: {
-    color: "#1565C0",
-    fontSize: 12,
-    fontWeight: "600",
-    flex: 1,
-  },
-  handoverTimeText: {
-    color: "#D84315",
-    fontSize: 12,
-    fontWeight: "600",
-    flex: 1,
-  },
-  handoverNoteBox: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 5,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderWidth: 1,
-    borderColor: "#E0E6ED",
-    marginTop: 2,
-  },
-  handoverNoteText: {
-    color: "#455A64",
-    fontSize: 11,
-    fontStyle: "italic",
-    flex: 1,
-    lineHeight: 15,
-  },
-  linesList: {
-    gap: 10,
-    marginTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#F4F6F9",
-    paddingTop: 10,
-  },
-  line: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-  },
-  qtyBadge: {
-    backgroundColor: "#F2F5F9",
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  qtyText: {
-    color: colors.ink,
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  name: {
-    color: colors.ink,
-    fontSize: 13,
-    fontWeight: "600",
-    lineHeight: 18,
-  },
-  variantBadge: {
-    backgroundColor: "#F6F8FB",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    alignSelf: "flex-start",
-    marginTop: 3,
-  },
-  variantText: {
-    color: colors.muted,
-    fontSize: 11,
-  },
-  price: {
-    color: colors.ink,
-    fontSize: 13,
-    fontWeight: "800",
-  },
-  emptyText: {
-    color: colors.muted,
-    fontSize: 12,
-  },
+  top: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+  id: { color: colors.ink, fontWeight: "800", fontSize: 14 },
+  meta: { color: colors.muted, fontSize: 12, marginTop: 2 },
+  line: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  name: { color: colors.ink, fontSize: 13, fontWeight: "600" },
+  price: { color: colors.ink, fontSize: 13, fontWeight: "700" },
   foot: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "flex-end",
+    alignItems: "baseline",
     borderTopWidth: 1,
     borderTopColor: colors.line,
     marginTop: 12,
-    paddingTop: 12,
-  },
-  footMeta: {
-    color: colors.ink,
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  footSub: {
-    color: colors.muted,
-    fontSize: 11,
-    marginTop: 1,
-  },
-  footPromo: {
-    color: colors.green,
-    fontSize: 11,
-    fontWeight: "700",
-    marginTop: 1,
-  },
-  total: {
-    color: colors.ink,
-    fontSize: 18,
-    fontWeight: "900",
-  },
-  actions: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#F4F6F9",
     paddingTop: 10,
   },
+  total: { color: colors.ink, fontSize: 17, fontWeight: "900" },
+  actions: { flexDirection: "row", gap: 8, marginTop: 12 },
 });

@@ -6,14 +6,15 @@ import {
   getRedirectResult,
   onAuthStateChanged,
   setPersistence,
-  signInAnonymously,
   signInWithEmailAndPassword,
   signInWithPopup,
   signInWithRedirect,
+  signOut,
   updateProfile,
   User,
 } from "firebase/auth";
 import {
+  addDoc,
   collection,
   writeBatch,
   doc,
@@ -24,15 +25,16 @@ import {
   setDoc,
   updateDoc,
   where,
+  writeBatch,
 } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Modal, Platform, SafeAreaView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Modal, Platform, SafeAreaView, StyleSheet, Text, View } from "react-native";
 import { BottomTabs, buyerTabs } from "./components/BottomTabs";
 import { ListingModal } from "./components/ListingModal";
 import { ModeToggle } from "./components/ModeToggle";
-import { seedEvents, seedListings, seedOffers, seedOrders, seedSellerOrders } from "./data";
+import { seedConversations, seedEvents, seedListings, seedOffers, seedOrders, seedSellerOrders } from "./data";
 import { auth, db, firebaseConfigured } from "./firebase";
-import { CheckoutDetails, lineKeyOf, priceCart, variantLabel } from "./lib/cart";
+import { lineKeyOf, priceCart, variantLabel } from "./lib/cart";
 import { applyFilters, defaultFilters } from "./lib/filter";
 import { AllItemsPage } from "./pages/AllItemsPage";
 import { AuthPage, SignUpData } from "./pages/AuthPage";
@@ -52,6 +54,7 @@ import {
   Conversation,
   Filters,
   Listing,
+  Message,
   Mode,
   Offer,
   Order,
@@ -143,6 +146,7 @@ export default function App() {
   const [savedIds, setSavedIds] = useState<string[]>([]);
   const [selected, setSelected] = useState<Listing | null>(null);
   const [user, setUser] = useState<User | null>(auth?.currentUser || null);
+  const [authLoading, setAuthLoading] = useState<boolean>(Boolean(auth));
   const [authOpen, setAuthOpen] = useState(false);
   const [authError, setAuthError] = useState("");
   const [profileReady, setProfileReady] = useState(false);
@@ -172,9 +176,9 @@ export default function App() {
 
   // seller data
   const [sellerOrders, setSellerOrders] = useState<Order[]>(() => {
+    if (firebaseConfigured) return []; // real orders come only from Firestore
     const local = getStoredSellerOrders();
-    if (local.length > 0) return local;
-    return seedSellerOrders;
+    return local.length > 0 ? local : seedSellerOrders;
   });
 
   const ownerId = user?.uid || "demo-seller";
@@ -187,19 +191,28 @@ export default function App() {
 
   useEffect(() => {
     const firebaseAuth = auth;
-    if (!firebaseAuth) return;
+    if (!firebaseAuth) {
+      setAuthLoading(false);
+      return;
+    }
     const handleUser = (nextUser: User | null) => {
       setUser(nextUser);
-      if (nextUser)
+      setAuthLoading(false);
+      if (nextUser) {
+        setOnboarded(true);
+        setStoredOnboarded();
         registerUser(nextUser)
           .then(() => setProfileReady(true))
           .catch((error) =>
             setAuthError(error instanceof Error ? error.message : "Could not create profile."),
           );
-      else setProfileReady(false);
+      } else {
+        setProfileReady(false);
+      }
     };
+
     let unsubscribe: () => void = () => undefined;
-    setPersistence(firebaseAuth, browserLocalPersistence)
+    (Platform.OS === "web" ? setPersistence(firebaseAuth, browserLocalPersistence) : Promise.resolve())
       .then(() => {
         unsubscribe = onAuthStateChanged(firebaseAuth, handleUser);
         return getRedirectResult(firebaseAuth);
@@ -207,12 +220,15 @@ export default function App() {
       .then((result) => {
         if (result?.user) handleUser(result.user);
       })
-      .catch((error) =>
-        setAuthError(error instanceof Error ? error.message : "Google sign-in could not be completed."),
-      );
+      .catch((error) => {
+        setAuthLoading(false);
+        setAuthError(error instanceof Error ? error.message : "Google sign-in could not be completed.");
+      });
+
     return () => unsubscribe();
   }, []);
 
+  // Sync listings from Firestore
   useEffect(() => {
     if (!db) return;
     const listingsQuery = query(collection(db, "listings"), orderBy("createdAt", "desc"));
@@ -232,9 +248,13 @@ export default function App() {
       (error) => flash(`Could not load saved items: ${error.message}`));
   }, [user?.uid]);
 
-  // Sync Buyer Orders from Firestore
+  const newestFirst = (a: Order, b: Order) =>
+    (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0);
+
+  // Sync Buyer Orders from Firestore: orders where I am the buyer
   useEffect(() => {
-    if (!db || !user) return;
+    if (!db) return;
+    if (!user) { setOrders([]); return; }
     const q = query(collection(db, "orders"), where("buyerId", "==", user.uid));
     return onSnapshot(
       q,
@@ -247,7 +267,7 @@ export default function App() {
         });
         setOrders(list);
       },
-      (error) => console.warn("Buyer orders sync notice:", error.message),
+      (error) => flash(`Could not load your orders: ${error.message}`),
     );
   }, [user?.uid]);
 
@@ -355,6 +375,7 @@ export default function App() {
   const items = useMemo(
     () =>
       [...localItems, ...cloudItems, ...seedListings]
+        .filter((item, index, all) => all.findIndex((x) => x.id === item.id) === index)
         .filter((item) => !removed.includes(item.id))
         .map((item) => (edits[item.id] ? { ...item, ...edits[item.id] } : item)),
     [localItems, cloudItems, edits, removed],
@@ -374,11 +395,24 @@ export default function App() {
 
   /* ---------- buyer actions ---------- */
 
-  const toggleSaved = (id: string) =>
-    setSavedIds((current) =>
-      current.includes(id) ? current.filter((value) => value !== id) : [...current, id],
-    );
+  const toggleSaved = async (id: string) => {
+    if (needsSignIn) { setAuthOpen(true); return; }
+    if (db && user) {
+      try {
+        const favorite = doc(db, "users", user.uid, "saved", id);
+        if (savedIds.includes(id)) await deleteDoc(favorite);
+        else await setDoc(favorite, { listingId: id, savedAt: serverTimestamp() });
+      } catch (error) { flash(error instanceof Error ? error.message : "Could not update favorites"); }
+      return;
+    }
+    setSavedIds((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
+  };
   const addToCart = (input: Omit<CartLine, "key">) => {
+    const item = items.find((i) => i.id === input.itemId);
+    if (!item || item.soldOut || item.stock === 0) { flash("This item is unavailable"); return; }
+    if (!Number.isInteger(input.qty) || input.qty < 1) return;
+    const existing = cart.filter((l) => l.itemId === input.itemId).reduce((n, l) => n + l.qty, 0);
+    if (item.stock !== undefined && existing + input.qty > item.stock) { flash("Not enough stock available"); return; }
     const key = lineKeyOf(input.itemId, input);
     setCart((current) =>
       current.some((l) => l.key === key)
@@ -386,8 +420,14 @@ export default function App() {
         : [...current, { ...input, key }],
     );
   };
-  const setLineQty = (key: string, qty: number) =>
-    setCart((current) => current.map((l) => (l.key === key ? { ...l, qty } : l)));
+  const setLineQty = (key: string, qty: number) => {
+    const line = cart.find((l) => l.key === key);
+    if (!line || !Number.isInteger(qty) || qty < 1) return;
+    const item = items.find((i) => i.id === line.itemId);
+    const otherQty = cart.filter((l) => l.itemId === line.itemId && l.key !== key).reduce((n, l) => n + l.qty, 0);
+    if (item?.stock !== undefined && qty + otherQty > item.stock) { flash("Not enough stock available"); return; }
+    setCart((current) => current.map((l) => l.key === key ? { ...l, qty } : l));
+  };
   const removeLine = (key: string) => setCart((current) => current.filter((l) => l.key !== key));
 
   const goTab = (next: Tab) => {
@@ -401,9 +441,12 @@ export default function App() {
     setTab("Search");
   };
 
-  const checkout = async (details?: CheckoutDetails) => {
+  const newOrderId = () =>
+    `ORD-${Date.now().toString(36).slice(-6)}${Math.random().toString(36).slice(2, 5)}`.toUpperCase();
+
+  const checkout = async () => {
     if (needsSignIn) return setAuthOpen(true);
-    const { rows, total } = priceCart(cart, items, offers);
+    const { rows } = priceCart(cart, items, offers);
     if (!rows.length) return;
     if (
       rows.length !== cart.length ||
@@ -507,14 +550,16 @@ export default function App() {
       });
     }
 
-    // Keep local stock / sold counts in step
+    // Keep local stock / sold counts in step for demo items (cloud items update from Firestore)
     setEdits((current) => {
       const next = { ...current };
-      for (const r of rows) {
-        const stock = r.item.stock === undefined ? undefined : Math.max(0, r.item.stock - r.line.qty);
-        next[r.item.id] = {
-          ...next[r.item.id],
-          sold: (r.item.sold || 0) + r.line.qty,
+      for (const item of boughtItems) {
+        if (cloudItems.some((ci) => ci.id === item.id)) continue;
+        const qty = qtyById.get(item.id) || 0;
+        const stock = item.stock === undefined ? undefined : Math.max(0, item.stock - qty);
+        next[item.id] = {
+          ...next[item.id],
+          sold: (item.sold || 0) + qty,
           ...(stock === undefined ? {} : { stock, soldOut: stock === 0 }),
         };
       }
@@ -534,6 +579,7 @@ export default function App() {
       } catch (e) {
         flash(e instanceof Error ? e.message : "Could not cancel order");
       }
+      return; // listeners refresh both the buyer and the seller
     }
     setOrders((o) => {
       const next = o.map((x) => (x.id === id ? { ...x, status: "Cancelled" as OrderStatus } : x));
@@ -547,28 +593,89 @@ export default function App() {
     });
   };
 
-  const openChat = (item: Listing) => {
+  const openChat = async (item: Listing) => {
     if (needsSignIn) return setAuthOpen(true);
-    const id = `c-${item.id}`;
-    setConversations((list) =>
-      list.some((c) => c.id === id)
-        ? list
-        : [{ id, itemId: item.id, itemTitle: item.title, seller: item.seller, messages: [] }, ...list],
-    );
-    setChatId(id);
+    if (item.sellerId && item.sellerId === user?.uid) {
+      flash("You cannot message yourself");
+      return;
+    }
+    const targetSellerId = item.sellerId || "demo-seller";
+    const targetSellerName = item.seller;
+
+    if (db && user) {
+      try {
+        const existing = conversations.find(
+          (c) =>
+            c.itemId === item.id &&
+            c.memberIds?.includes(user.uid) &&
+            c.memberIds?.includes(targetSellerId),
+        );
+        if (existing) {
+          setChatId(existing.id);
+        } else {
+          const newDoc = await addDoc(
+            collection(db, "conversations"),
+            clean({
+              itemId: item.id,
+              itemTitle: item.title,
+              seller: targetSellerName,
+              sellerId: targetSellerId,
+              buyer: ownerName,
+              buyerId: user.uid,
+              memberIds: [user.uid, targetSellerId],
+              lastMessage: "",
+              lastMessageAt: Date.now(),
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            }),
+          );
+          const newConv: Conversation = {
+            id: newDoc.id,
+            itemId: item.id,
+            itemTitle: item.title,
+            seller: targetSellerName,
+            sellerId: targetSellerId,
+            buyer: ownerName,
+            buyerId: user.uid,
+            memberIds: [user.uid, targetSellerId],
+            lastMessage: "",
+            lastMessageAt: Date.now(),
+            messages: [],
+          };
+          setConversations((prev) => [newConv, ...prev.filter((c) => c.id !== newDoc.id)]);
+          setChatId(newDoc.id);
+        }
+      } catch (e) {
+        flash(e instanceof Error ? e.message : "Could not initialize conversation");
+      }
+    } else {
+      const id = `c-${item.id}`;
+      setConversations((list) =>
+        list.some((c) => c.id === id)
+          ? list
+          : [
+              {
+                id,
+                itemId: item.id,
+                itemTitle: item.title,
+                seller: item.seller,
+                sellerId: targetSellerId,
+                buyer: ownerName,
+                buyerId: ownerId,
+                memberIds: [ownerId, targetSellerId],
+                messages: [],
+              },
+              ...list,
+            ],
+      );
+      setChatId(id);
+    }
+
     setSelected(null);
     setMode("buyer");
     setSubPage("chat");
     setTab("Messages");
   };
-  const sendMessage = (text: string) =>
-    setConversations((list) =>
-      list.map((c) =>
-        c.id === chatId
-          ? { ...c, messages: [...c.messages, { id: String(Date.now()), mine: true, text, at: Date.now() }] }
-          : c,
-      ),
-    );
 
   /* ---------- auth (unchanged) ---------- */
 
@@ -611,8 +718,7 @@ export default function App() {
         setProfileReady(true);
         setAuthOpen(false);
       } else {
-        await signInAnonymously(auth);
-        setAuthOpen(false);
+        throw new Error("Google sign-in is available on the web version. Please use email sign-in on mobile.");
       }
     } catch (error) {
       const code = error instanceof Error ? error.message : "Google sign-in failed.";
@@ -782,9 +888,11 @@ export default function App() {
     if (db && user) {
       try {
         await updateDoc(doc(db, "orders", id), { status, updatedAt: serverTimestamp() });
+        flash(`Order status: ${status}`);
       } catch (e) {
-        console.warn("Could not update order status in Firestore:", e);
+        flash(e instanceof Error ? e.message : "Could not update order");
       }
+      return; // listeners refresh both the seller and the buyer
     }
     setSellerOrders((list) => {
       const next = list.map((o) => (o.id === id ? { ...o, status } : o));
@@ -813,6 +921,7 @@ export default function App() {
         onDone={() => {
           setStoredOnboarded();
           setOnboarded(true);
+          setStoredOnboarded();
           setAuthOpen(true);
         }}
       />
@@ -827,13 +936,18 @@ export default function App() {
 
       {mode === "seller" ? (
         <SellerApp
-          ownerName={ownerName}
+          ownerName={ownerName || "Seller"}
+          ownerId={ownerId}
           campus="North Campus"
-          products={myProducts}
-          events={events}
-          eventProducts={eventProducts}
-          offers={offers}
-          orders={sellerOrders}
+          products={myProducts || []}
+          events={events || []}
+          eventProducts={eventProducts || []}
+          offers={offers || []}
+          orders={sellerOrders || []}
+          conversations={displaySellerConversations || []}
+          activeChatId={chatId}
+          onSelectChat={(id) => setChatId(id)}
+          onSendMessage={sendMessage}
           onSaveProduct={saveProduct}
           onDeleteProduct={deleteProduct}
           onToggleSoldOut={toggleSoldOut}
@@ -915,13 +1029,6 @@ export default function App() {
               offers={offers}
               onQty={setLineQty}
               onRemove={removeLine}
-              onSaveForLater={(itemId, key) => {
-                if (!savedIds.includes(itemId)) {
-                  toggleSaved(itemId);
-                }
-                removeLine(key);
-                flash("Moved to Saved items");
-              }}
               onOpen={setSelected}
               onBrowse={() => goTab("Search")}
               onCheckout={checkout}
@@ -950,7 +1057,11 @@ export default function App() {
           )}
           {!(tab === "Messages" && subPage === "chat") && (
             <BottomTabs
-              tabs={buyerTabs.map((t) => (t.key === "Cart" ? { ...t, badge: cartUnits } : t))}
+              tabs={buyerTabs.map((t) => {
+                if (t.key === "Cart") return { ...t, badge: cartUnits };
+                if (t.key === "Messages") return { ...t, badge: displayBuyerConversations.length };
+                return t;
+              })}
               current={tab}
               onChange={(key) => goTab(key as Tab)}
             />

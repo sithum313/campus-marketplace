@@ -13,6 +13,7 @@ import {
   View,
 } from "react-native";
 import { AppIcon } from "../components/AppIcon";
+import { Field, ScreenHeader } from "../components/ui";
 import { colors } from "../theme";
 import { Conversation, MeetupDetails, Message, OfferDetails } from "../types";
 
@@ -411,8 +412,7 @@ export function ChatPage({
       {/* ─── Messages Thread Feed ───────────────────────────────────────── */}
       <ScrollView
         ref={scroller}
-        contentContainerStyle={styles.messagesList}
-        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.messages}
         onContentSizeChange={() => scroller.current?.scrollToEnd({ animated: false })}
       >
         {localMessages.length === 0 ? (
@@ -426,11 +426,18 @@ export function ChatPage({
             </Text>
           </View>
         ) : (
-          groupedMessages.map((group, groupIdx) => (
-            <View key={groupIdx} style={styles.dateGroup}>
-              {/* Date divider pill */}
-              <View style={styles.dateDivider}>
-                <Text style={styles.dateDividerText}>{group.dateLabel}</Text>
+          conversation.messages.map((m) => {
+            let isMine: boolean;
+            if (m.senderRole) {
+              isMine = isSeller ? m.senderRole === "seller" : m.senderRole === "buyer";
+            } else if (m.senderId && currentUserId) {
+              isMine = m.senderId === currentUserId;
+            } else {
+              isMine = m.mine;
+            }
+            return (
+              <View key={m.id} style={[styles.bubble, isMine ? styles.mine : styles.theirs]}>
+                <Text style={{ color: isMine ? "#FFF" : colors.ink, fontSize: 14 }}>{m.text}</Text>
               </View>
 
               {group.items.map((m, mIdx) => {
@@ -746,6 +753,9 @@ export function ChatPage({
             />
           </Pressable>
         </View>
+        <Pressable style={styles.send} onPress={() => send(text)} accessibilityLabel="Send">
+          <AppIcon name="send" size={18} color="#FFF" />
+        </Pressable>
       </View>
 
       {/* ─── MEETUP MODAL ──────────────────────────────────────────────── */}

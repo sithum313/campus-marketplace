@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { ImageBackground, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { AppIcon } from "../components/AppIcon";
 import { OfferBanner } from "../components/OfferBanner";
 import { ProductImage } from "../components/ProductImage";
 import { Button, Chip, Field, Label, ScreenHeader, page } from "../components/ui";
-import { coverKeys, eventCovers } from "../designs";
+import { CoverImage } from "../components/CoverImage";
+import { coverKeyFor, coverKeys } from "../designs";
 import { colors, money } from "../theme";
 import { CampusEvent, Listing, Offer, OfferKind, ProductKind } from "../types";
 import { kindLabel } from "./ProductForm";
@@ -55,25 +56,15 @@ export function SellerEvents({
         {events.map((event) => {
           const products = eventProducts.filter((p) => p.eventId === event.id);
           const s = stats(products);
-          const cover = event.cover ? eventCovers[event.cover] : undefined;
           return (
             <Pressable key={event.id} style={styles.card} onPress={() => onOpen(event.id)}>
-              {cover ? (
-                <ImageBackground source={cover} style={styles.banner}>
-                  <View style={styles.shade} />
-                  <Text style={styles.bannerTitle}>{event.title}</Text>
-                  <Text style={styles.bannerMeta}>
-                    {event.date} · {event.venue}
-                  </Text>
-                </ImageBackground>
-              ) : (
-                <View style={[styles.banner, { backgroundColor: event.color }]}>
-                  <Text style={[styles.bannerTitle, { color: colors.ink }]}>{event.title}</Text>
-                  <Text style={[styles.bannerMeta, { color: colors.ink }]}>
-                    {event.date} · {event.venue}
-                  </Text>
-                </View>
-              )}
+              <CoverImage coverKey={coverKeyFor(event)} style={styles.banner} />
+              <View style={[styles.bannerInfo, { borderLeftColor: event.color }]}>
+                <Text style={styles.bannerTitle} numberOfLines={2}>{event.title}</Text>
+                <Text style={styles.bannerMeta} numberOfLines={1}>
+                  {event.date} · {event.venue}
+                </Text>
+              </View>
               <View style={styles.statRow}>
                 <Stat label="Products" value={String(products.length)} />
                 <Stat label="Tickets sold" value={String(s.tickets)} />
@@ -126,8 +117,8 @@ export function EventForm({
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
         {coverKeys.map((key) => (
           <Pressable key={key} onPress={() => setCover(key)}>
-            <ImageBackground
-              source={eventCovers[key]}
+            <CoverImage
+              coverKey={key}
               style={[styles.coverThumb, cover === key && styles.coverOn]}
               imageStyle={{ borderRadius: 12 }}
             >
@@ -136,11 +127,11 @@ export function EventForm({
                   <AppIcon name="checkmark" size={14} color="#FFF" />
                 </View>
               ) : null}
-            </ImageBackground>
+            </CoverImage>
           </Pressable>
         ))}
         <Pressable onPress={() => setCover(undefined)} style={[styles.coverThumb, styles.coverNone, !cover && styles.coverOn]}>
-          <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "700" }}>No photo</Text>
+          <Text style={{ color: colors.muted, fontSize: 12, fontWeight: "700" }}>Default</Text>
         </Pressable>
       </ScrollView>
       <Label>Event name</Label>
@@ -259,7 +250,7 @@ export function EventManager({
               </Text>
               <Text style={styles.sub}>
                 {money(p.price)} · {p.sold || 0} sold{p.stock !== undefined ? ` · ${p.stock} in stock` : ""}
-                {p.designs?.length ? ` · ${p.designs.length} designs` : ""}
+                {p.kind !== "tshirt" && p.designs?.length ? ` · ${p.designs.length} designs` : ""}
               </Text>
             </View>
             <Pressable hitSlop={8} onPress={() => onEditProduct(p)} style={styles.iconBtn}>
@@ -408,10 +399,10 @@ const styles = StyleSheet.create({
   sub: { color: colors.muted, fontSize: 12, marginTop: 4 },
   empty: { color: colors.muted, fontSize: 13, textAlign: "center", padding: 14 },
   card: { backgroundColor: "#FFF", borderRadius: 22, overflow: "hidden", borderWidth: 1, borderColor: colors.line },
-  banner: { height: 130, padding: 14, justifyContent: "flex-end" },
-  shade: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(30,34,48,0.4)" },
-  bannerTitle: { color: "#FFF", fontSize: 18, fontWeight: "900" },
-  bannerMeta: { color: "#FFF", opacity: 0.9, fontSize: 12, marginTop: 2 },
+  banner: { width: "100%", aspectRatio: 2 },
+  bannerInfo: { paddingHorizontal: 14, paddingVertical: 12, borderLeftWidth: 5 },
+  bannerTitle: { color: colors.ink, fontSize: 17, fontWeight: "900" },
+  bannerMeta: { color: colors.muted, fontSize: 12, marginTop: 3 },
   statRow: { flexDirection: "row", paddingVertical: 12 },
   statCard: { backgroundColor: "#FFF", borderRadius: 18, borderWidth: 1, borderColor: colors.line, marginTop: 14 },
   statValue: { color: colors.ink, fontWeight: "900", fontSize: 16 },

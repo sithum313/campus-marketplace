@@ -53,10 +53,14 @@ export function MessagesPage({
   conversations: propConversations,
   onOpen,
   onBrowse,
+  isSeller,
+  currentUserId,
 }: {
   conversations: Conversation[];
   onOpen: (id: string) => void;
   onBrowse: () => void;
+  isSeller?: boolean;
+  currentUserId?: string;
 }) {
   const [conversations, setConversations] = useState<Conversation[]>(propConversations);
   const [search, setSearch] = useState("");
@@ -360,8 +364,8 @@ export function MessagesPage({
           )}
         </View>
       ) : (
-        <View style={styles.cardsList}>
-          {filteredConversations.map((c) => {
+        <View style={{ gap: 10, marginTop: 18 }}>
+          {conversations.map((c) => {
             const isCurrentUserSeller = isSeller !== undefined
               ? isSeller
               : Boolean(
@@ -378,7 +382,6 @@ export function MessagesPage({
                   ? (isCurrentUserSeller ? last.senderRole === "seller" : last.senderRole === "buyer")
                   : (last.senderId && currentUserId ? last.senderId === currentUserId : last.mine))
               : false;
-
             const displaySnippet = last
               ? (isMine ? "You: " : "") + last.text
               : c.lastMessage
@@ -489,6 +492,12 @@ export function MessagesPage({
                       <AppIcon name="chevron-forward" size={15} color={colors.line} />
                     )}
                   </View>
+                  <Text style={styles.item} numberOfLines={1}>
+                    {c.itemTitle}
+                  </Text>
+                  <Text style={styles.last} numberOfLines={1}>
+                    {displaySnippet}
+                  </Text>
                 </View>
               </Pressable>
             );
@@ -636,6 +645,7 @@ const styles = StyleSheet.create({
   },
   searchBar: {
     flexDirection: "row",
+    gap: 12,
     alignItems: "center",
     backgroundColor: "#FFF",
     borderWidth: 1,
@@ -999,4 +1009,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
   },
+  avatarText: { color: colors.ink, fontWeight: "900", fontSize: 18 },
+  name: { color: colors.ink, fontWeight: "800", fontSize: 15 },
+  item: { color: colors.muted, fontSize: 11, marginTop: 1 },
+  last: { color: colors.ink, fontSize: 13, marginTop: 4 },
+  roleTag: { backgroundColor: "rgba(133,218,225,0.25)", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
+  roleTagText: { color: colors.ink, fontSize: 10, fontWeight: "700" },
 });
